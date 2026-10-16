@@ -1,0 +1,314 @@
+/* ============================================================================
+   NIT — Módulo Reboques  ·  reboques.css  ·  v2026.07.09
+   Espelha o padrão visual do Módulo Semáforo (nit.css).
+   Prefixo nit-reb-* nas classes. Herda todas as variáveis CSS do nit.css.
+   ============================================================================ */
+
+/* ── Tab ─────────────────────────────────────────────────────────────────── */
+#tab-reboques { display: none; }
+#tab-reboques.active {
+    display: flex; flex-direction: row;
+    flex-grow: 1; min-height: 0; overflow: hidden;
+}
+
+/* ── Layout: sidebar + área principal ───────────────────────────────────── */
+.nit-reb-layout {
+    display: flex; flex-direction: row;
+    flex-grow: 1; min-height: 0; overflow: hidden;
+}
+
+/* ── Sidebar — mesmo padrão do Semáforo ─────────────────────────────────── */
+#nit-rb-sidebar {
+    width: var(--sidebar-width, 260px);
+    flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-bg);
+    overflow: hidden;
+    transition: width 0.25s ease;
+    position: relative;
+}
+#nit-rb-sidebar.collapsed { width: 44px; }
+#nit-rb-sidebar.collapsed .nit-rb-sb-body,
+#nit-rb-sidebar.collapsed .nit-rb-sb-header-label,
+#nit-rb-sidebar.collapsed .sb-btn-processar-full,
+#nit-rb-sidebar.collapsed .nit-rb-sb-section-header { display: none; }
+#nit-rb-sidebar.collapsed .sb-circulo-wrap  { display: none; }
+#nit-rb-sidebar.collapsed .nit-rb-collapsed-icons { display: flex; }
+#nit-rb-btn-toggle {
+    position: absolute; top: 50%; right: -12px; z-index: 10;
+    transform: translateY(-50%);
+    width: 24px; height: 24px;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 50%; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    color: var(--color-text-tertiary); transition: color .15s, background .15s;
+}
+#nit-rb-btn-toggle:hover { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+#nit-rb-sidebar.collapsed #nit-rb-btn-toggle svg { transform: rotate(180deg); }
+.nit-rb-sb-section { border-bottom: 1px solid var(--color-border); }
+.nit-rb-sb-section-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px; cursor: pointer; user-select: none;
+    font-size: 11px; font-weight: 600; letter-spacing: .6px;
+    text-transform: uppercase; color: var(--color-text-tertiary);
+}
+.nit-rb-sb-section-header:hover { color: var(--color-text-secondary); }
+.nit-rb-chevron { margin-left: auto; transition: transform .2s; }
+.nit-rb-sb-section.collapsed-sec .nit-rb-chevron { transform: rotate(-90deg); }
+.nit-rb-sb-section.collapsed-sec .nit-rb-sb-body { display: none; }
+.nit-rb-sb-body { overflow: hidden; }
+.nit-rb-sb-inner { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.nit-rb-collapsed-icons { display: none; flex-direction: column; align-items: center; gap: 12px; padding: 14px 0; }
+.nit-rb-collapsed-icons button { background: none; border: none; cursor: pointer; color: var(--color-text-tertiary); padding: 6px; border-radius: var(--radius-sm); transition: color .15s, background .15s; }
+.nit-rb-collapsed-icons button:hover { color: var(--color-accent); background: var(--color-surface); }
+
+/* Balanço na sidebar */
+.nit-rb-balanco-grupo { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); }
+.nit-rb-balanco-linha { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-secondary); }
+.nit-rb-bal-val { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--color-text-primary); }
+.nit-rb-bal-val.ok  { color: var(--color-success); }
+.nit-rb-bal-val.atv { color: var(--color-warning); }
+
+/* Botões na sidebar */
+.nit-rb-sb-btn {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; font-size: 12px;
+    background: transparent; color: var(--color-text-secondary);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.nit-rb-sb-btn:hover { background: var(--color-surface); color: var(--color-text-primary); border-color: var(--color-accent); }
+
+/* ── Kanban — espelha o padrão do Semáforo ──────────────────────────────── */
+.nit-reb-board {
+    display: flex; flex-direction: row;
+    flex-grow: 1; min-height: 0; overflow: hidden;
+}
+
+/* Coluna — mesmo .kanban-column do Semáforo */
+.nit-reb-column {
+    display: flex; flex-direction: column;
+    min-height: 0; flex: 1;
+    border-right: 1px solid var(--color-border);
+}
+.nit-reb-column:last-child { flex: 0 0 320px; border-right: none; }
+@media (max-width: 1100px) { .nit-reb-column:last-child { flex: 0 0 280px; } }
+
+/* Header da coluna — mesmo .kanban-column-header do Semáforo */
+.nit-reb-col-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; flex-shrink: 0;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+    position: relative; /* necessário para o ::before funcionar */
+}
+/* Técnica idêntica ao Semáforo: radial-gradient via ::before por coluna */
+.nit-reb-board .nit-reb-column:nth-child(1) .nit-reb-col-header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(86,211,100,0.12), transparent 70%);
+    pointer-events: none;
+}
+.nit-reb-board .nit-reb-column:nth-child(2) .nit-reb-col-header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(255,166,87,0.12), transparent 70%);
+    pointer-events: none;
+}
+.nit-reb-board .nit-reb-column:nth-child(3) .nit-reb-col-header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(59,130,246,0.12), transparent 70%);
+    pointer-events: none;
+}
+/* cor-atuando: âmbar — mapeado ao mesmo #ffa657 do cor-via-livre do Semáforo */
+.cor-atuando { color: #ffa657; }
+
+/* Badge contador — mesmo .card-count do Semáforo */
+.nit-reb-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 2px 8px; border-radius: 10px;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    color: var(--color-text-secondary); margin-left: auto;
+}
+
+/* Botão "+ Nova" no header */
+.nit-rb-col-add {
+    display: flex; align-items: center; gap: 4px;
+    background: transparent; color: var(--color-text-tertiary);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: .3px;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0; margin-left: 6px;
+    transition: color .15s, border-color .15s, background .15s;
+}
+.nit-rb-col-add:hover { color: var(--color-text-primary); border-color: var(--color-accent); background: rgba(88,166,255,.06); }
+
+/* Filtro de busca por coluna — mesmo .kanban-column-filter */
+.nit-reb-col-filter { padding: 6px 10px; flex-shrink: 0; border-bottom: 1px solid var(--color-border); }
+.nit-reb-col-filter input {
+    width: 100%; box-sizing: border-box;
+    background: var(--color-bg); color: var(--color-text-primary);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 5px 10px; font-size: 11.5px; font-family: 'Inter', sans-serif;
+}
+.nit-reb-col-filter input:focus { outline: none; border-color: var(--color-accent); }
+
+/* Busca com ícone (ocorrências) */
+.nit-reb-col-search { padding: 6px 10px; flex-shrink: 0; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 6px; }
+.nit-reb-col-search svg { flex-shrink: 0; color: var(--color-text-tertiary); }
+.nit-reb-col-search input { flex-grow: 1; background: transparent; color: var(--color-text-primary); border: none; padding: 3px 0; font-size: 11.5px; font-family: 'Inter', sans-serif; }
+.nit-reb-col-search input:focus { outline: none; }
+
+/* Cards container — mesmo .kanban-cards-container */
+.nit-reb-cards {
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+    overflow-y: auto; flex-grow: 1; min-height: 80px;
+}
+
+/* ── Card de reboquista — mesmo padrão visual do Semáforo ───────────────── */
+.nit-reb-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 11px 13px;
+    cursor: grab;
+    transition: transform .15s, box-shadow .15s, opacity .15s;
+}
+.nit-reb-card:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+.nit-reb-card.arrastando { opacity: .4; cursor: grabbing; }
+.nit-reb-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 7px; }
+.nit-reb-nome { font-size: 13px; font-weight: 600; color: var(--color-text-primary); line-height: 1.3; }
+
+/* Badge de status — cores sutis como Semáforo */
+.nit-reb-badge {
+    flex-shrink: 0; padding: 2px 8px; border-radius: 10px;
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+}
+.nit-reb-badge.disponivel { color: var(--color-success); background: rgba(56,189,107,.12); border: 1px solid rgba(56,189,107,.2); }
+.nit-reb-badge.atuando    { color: var(--color-warning); background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.2); }
+
+/* Linhas de info */
+.nit-reb-card-body { display: flex; flex-direction: column; gap: 3px; }
+.nit-reb-info { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--color-text-secondary); line-height: 1.4; }
+.nit-reb-info svg { flex-shrink: 0; color: var(--color-text-tertiary); }
+.nit-reb-mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+.nit-reb-ocorrencia {
+    margin-top: 6px; padding: 4px 8px; border-radius: var(--radius-sm);
+    background: rgba(251,191,36,.06); border: 1px dashed rgba(251,191,36,.25);
+    color: var(--color-warning); font-size: 11px; display: flex; align-items: center; gap: 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Footer de ações */
+.nit-reb-card-footer { display: flex; align-items: center; gap: 2px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--color-border); }
+.nit-reb-acao { background: none; border: none; cursor: pointer; color: var(--color-text-tertiary); font-size: 14px; padding: 4px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; transition: color .15s, background .15s; }
+.nit-reb-acao:hover                  { background: color-mix(in srgb, var(--color-text-tertiary) 8%, transparent); }
+.nit-reb-acao.js-editar:hover,
+.nit-reb-acao.js-ev-editar:hover     { color: var(--color-accent); }
+.nit-reb-acao.js-remover:hover,
+.nit-reb-acao.js-ev-remover:hover    { color: var(--color-danger); }
+.nit-reb-acao.js-acionar:hover       { color: var(--color-primary); }
+.nit-reb-acao.js-finalizar:hover,
+.nit-reb-acao.js-ev-finalizar:hover  { color: var(--color-success); }
+.nit-reb-acao.js-ev-whatsapp:hover   { color: #25d366; }
+
+/* ── Card de evento (ocorrência em andamento) ────────────────────────────── */
+.nit-reb-ev-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 11px 13px;
+}
+.nit-reb-ev-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.nit-reb-ev-header strong { font-size: 12px; font-weight: 700; color: var(--color-text-primary); letter-spacing: .3px; }
+.nit-reb-ev-hora { font-size: 11px; color: var(--color-text-tertiary); font-family: 'JetBrains Mono', monospace; }
+.nit-reb-ev-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.nit-reb-ev-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+    background: rgba(88,166,255,.10); color: var(--color-accent);
+    border: 1px solid rgba(88,166,255,.18);
+}
+.nit-reb-ev-tag.vazio { background: transparent; border: 1px dashed var(--color-border); color: var(--color-text-tertiary); font-weight: 500; }
+.nit-reb-tag-x { background: none; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; opacity: .7; }
+.nit-reb-tag-x:hover { opacity: 1; }
+
+/* Drop highlight */
+.nit-reb-dz-ativa { background: rgba(88,166,255,.06) !important; outline: 1px dashed var(--color-accent); outline-offset: -1px; }
+
+/* Vazio */
+.nit-reb-vazio { padding: 20px 12px; text-align: center; font-size: 12px; color: var(--color-text-tertiary); border: 1px dashed var(--color-border); border-radius: var(--radius-lg); }
+
+/* ── Painel de acionamento → MODAL CENTRALIZADO ──────────────────────────── */
+#nit-reboque-acionamento {
+    position: fixed; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(3,8,15,.65);
+    z-index: 950;
+}
+#nit-reboque-acionamento.aberto { display: flex; }
+.nit-reb-acion-box {
+    width: min(480px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    display: flex; flex-direction: column;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 16px 48px rgba(0,0,0,.6);
+    overflow: hidden;
+}
+.nit-reb-panel-header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
+.nit-reb-panel-header span { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+
+.nit-reb-dz-section { padding: 8px 12px 4px; }
+.nit-reb-dz-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--color-text-tertiary); margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+.nit-reboque-dropzone {
+    min-height: 34px; padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 5px;
+    border: 1px dashed rgba(88,166,255,.3); border-radius: var(--radius-sm);
+    transition: background .15s, border-color .15s;
+}
+
+/* Formulários */
+.nit-reb-form { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex-grow: 1; }
+.nit-reb-form label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--color-text-tertiary); margin-bottom: 3px; }
+.nit-reb-form input, .nit-reb-form textarea {
+    width: 100%; box-sizing: border-box;
+    background: var(--color-bg); color: var(--color-text-primary);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    padding: 8px 10px; font-family: 'Inter', sans-serif; font-size: 13px; resize: vertical;
+}
+.nit-reb-form input:focus, .nit-reb-form textarea:focus { outline: none; border-color: var(--color-accent); }
+.nit-reb-form-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--color-border); flex-shrink: 0; }
+
+/* ── Modais ──────────────────────────────────────────────────────────────── */
+.nit-reb-modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(3,8,15,.65); z-index: 950; }
+.nit-reb-modal-overlay.aberto { display: flex; }
+.nit-reb-modal { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: 0 16px 48px rgba(0,0,0,.6); overflow: hidden; }
+.nit-reb-modal.larga { width: min(540px, calc(100vw - 32px)); }
+.nit-reb-modal-header { display: flex; align-items: center; padding: 13px 16px; border-bottom: 1px solid var(--color-border); font-size: 14px; font-weight: 600; color: var(--color-text-primary); flex-shrink: 0; }
+#nit-reboque-rel-texto { width: 100%; box-sizing: border-box; min-height: 240px; background: var(--color-bg); color: var(--color-text-primary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.55; resize: vertical; }
+
+/* VT + placa em destaque nas tags do card de evento */
+.nit-reb-tag-vt {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: var(--color-accent);
+    background: rgba(88,166,255,.15);
+    padding: 1px 6px; border-radius: 4px;
+    margin-left: 5px;
+    border: 1px solid rgba(88,166,255,.2);
+}
+
+/* Botão de Relatório — destaque visual na sidebar */
+.nit-rb-sb-btn-destaque {
+    color: var(--color-accent);
+    border-color: rgba(88,166,255,.3);
+    background: rgba(88,166,255,.06);
+    font-weight: 600;
+}
+.nit-rb-sb-btn-destaque:hover {
+    background: rgba(88,166,255,.14);
+    border-color: var(--color-accent);
+    color: #fff;
+}
