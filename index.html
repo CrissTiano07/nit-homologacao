@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            window.NIT_API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+                ? 'http://127.0.0.1:8000'
+                : 'https://backend-desligado-na-homologacao.invalid';
+            window._NIT_KEY_CACHE = null;
+
+            window.getNITKey = async function() {
+                if (window._NIT_KEY_CACHE) return window._NIT_KEY_CACHE;
+                try {
+                    const r = await fetch(`${window.NIT_API_URL}/api/v1/config`);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const d = await r.json();
+                    window._NIT_KEY_CACHE = d.key;
+                    return d.key;
+                } catch (e) {
+                    console.warn('[NIT] Erro ao buscar chave:', e.message);
+                    return null;
+                }
+            };
+
+            const firebaseConfig = {
+                apiKey:        "AIzaSyDEAxzkLdtdTINDbu5b6WLvBDuE_FlQhus",
+                authDomain:    "nit-homologacao.firebaseapp.com",
+                databaseURL:   "https://nit-homologacao-default-rtdb.firebaseio.com/",
+                projectId:     "nit-homologacao",
+                storageBucket: "nit-homologacao.firebasestorage.app",
+            };
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            window.db = firebase.database();
+        });
+    </script>
+
+    <title>NIT — HOMOLOGAÇÃO (teste)</title>
+    <link rel="icon" href="data:,">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="nit.css?v=20260714">
+    <link rel="stylesheet" href="reboques.css?v=20260709">
+
+</head>
+<body data-theme="dark">
+<div style="position:sticky;top:0;z-index:99999;background:#b91c1c;color:#fff;text-align:center;font:700 14px/1.6 sans-serif;padding:4px">HOMOLOGAÇÃO — banco de teste (nit-homologacao). Não usar na operação.</div>
+
+
+    <!-- LOGIN ────────────────────────────────────────────────────────── -->
+    <!-- Backdrop sidebar (mobile/tablet) -->
+    <div class="sb-backdrop" id="sb-backdrop"></div>
+
+    <div id="nit-login-overlay" class="nit-login-overlay">
+        <div class="nit-login-box">
+            <div class="nit-login-logo">NIT</div>
+            <div class="nit-login-sub">Núcleo de Inteligência de Tráfego</div>
+            <div id="nit-login-status" class="nit-login-status"></div>
+            <button id="btn-login-google" class="nit-login-btn nit-login-btn-google">
+                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                    <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                </svg>
+                Entrar com Google
+            </button>
+            <p class="nit-login-info">Acesso restrito à equipe autorizada</p>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="tab-navigation">
+            <div class="nav-pill">
+                <div class="nav-left">
+                    <button class="btn-sb-hamburger" id="btn-sb-hamburger" title="Abrir painel lateral" aria-label="Abrir painel lateral">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <button class="tab-button active" data-tab="tab-semaforo"> Semáforo</button>
+                    <button class="tab-button" data-tab="tab-reboques"> Reboques</button>
+                </div>
+                <div class="nav-pill-center">
+                    <button id="btn-busca-global" title="Busca global (Ctrl+K)" aria-label="Abrir busca global">
+                        
+                        <span>Pesquisar cards…</span>
+                        <kbd>Ctrl K</kbd>
+                    </button>
+                </div>
+                <div class="nav-right">
+                    <span id="nit-operador-badge" class="nav-operador-badge"></span>
+                    <span id="nit-firebase-status" class="nit-status-indicator" title="Status Firebase">
+                        <span class="nit-status-dot" style="background-color:var(--color-info);"></span>
+                        <span style="color:var(--color-info);">Conectando…</span>
+                    </span>
+                    <button id="btn-ver-historico" class="btn-icon" title="Ver Histórico de Ações" style="width:26px;height:26px;font-size:12px;"><i class="fas fa-history"></i></button>
+                    <button id="btn-logout" title="Sair / Trocar operador">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Sair</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB SEMÁFORO ──────────────────────────────────────────────── -->
+        <div id="tab-semaforo" class="tab-content active">
+            <div class="app-layout">
+
+                <!-- SIDEBAR ─────────────────────────────────────────── -->
+                <aside class="sidebar" id="sidebar">
+                    <button class="sb-toggle" id="btn-sb-toggle" title="Recolher / Expandir painel" aria-expanded="true">
+                        
+                    </button>
+
+                    <div class="sb-section" id="sb-sec-entrada" style="border-bottom:1px solid var(--color-border);">
+                        <div class="sb-body" style="max-height:none;">
+                            <div class="sb-inner sb-inner-circulo">
+
+                                <!-- Wrapper do círculo — some via CSS quando .collapsed -->
+                                <div class="sb-circulo-wrap">
+                                    <div class="sb-ring-outer">
+                                        <div class="sb-ring-inner">
+                                            <div class="sb-circulo">
+                                                <textarea
+                                                    id="relatorio-bruto-input"
+                                                    class="sb-textarea-circulo"
+                                                    placeholder=""
+                                                ></textarea>
+                                                <!-- Placeholder visual do círculo — controlado por JS -->
+                                                <div id="circulo-placeholder-label" style="
+                                                    position:absolute;inset:0;display:flex;
+                                                    flex-direction:column;align-items:center;
+                                                    justify-content:center;pointer-events:none;
+                                                    color:rgba(250,250,250,0.70);font-size:11px;
+                                                    font-family:var(--font-family-mono);
+                                                    text-align:center;padding:0 20px;
+                                                    line-height:1.5;transition:opacity .2s;
+                                                ">
+                                                    <i class="fas fa-paste" style="font-size:18px;margin-bottom:6px;opacity:.12;"></i>
+                                                    Cole o relatório aqui…
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Botão processar — estilo 100% via classe CSS -->
+                                <button
+                                    type="button"
+                                    id="btn-processar"
+                                    class="sb-btn-processar-full"
+                                >
+                                    <span class="sb-label">Processar</span>
+                                </button>
+                                
+                                <button
+                                    type="button"
+                                        id="btn-desfazer-processamento"
+                                        class="sb-btn-processar-full sb-btn-secundario"
+                                        style="display:none;"
+                                        title="Reverte o último relatório processado"
+                                >
+                                    <span class="sb-label">↩️ Desfazer </span>
+                                </button>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sb-section" id="sb-sec-saida">
+                        <div class="sb-section-header" onclick="NitSidebar.toggleSec('sb-sec-saida')" role="button" tabindex="0">
+                            <div class="sb-icon"></div>
+                            <span class="sb-label">Saída</span>
+                            
+                        </div>
+                        <div class="sb-body">
+                            <div class="sb-inner">
+                                <div class="balanco-compacto">
+                                    <div class="balanco-item">
+                                        <span>Ocorrências</span>
+                                        <strong id="display-total">0</strong>
+                                    </div>
+                                    <div class="balanco-item" style="--balanco-cor: var(--color-warning)">
+                                        <span>Pendentes</span>
+                                        <strong id="display-pendentes">0</strong>
+                                    </div>
+                                    <div class="balanco-item" style="--balanco-cor: var(--color-success)">
+                                        <span>Normalizados</span>
+                                        <strong id="display-normalizados">0</strong>
+                                    </div>
+                                </div>
+                                <textarea id="relatorio-final-preview" class="mono-font sb-textarea" readonly placeholder="Pré-visualização do relatório..."></textarea>
+                                <div class="form-check">
+                                    <input type="checkbox" id="check-incluir-normalizados">
+                                    <label for="check-incluir-normalizados">Incluir Normalizados</label>
+                                </div>
+                                <button id="btn-visualizar-relatorio" class="btn btn-primario sb-btn"><span class="sb-btn-label">Ver Relatório</span></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sb-collapsed-icons">
+                        <div title="Entrada de Dados" onclick="NitSidebar.expandir()"></div>
+                        <div title="Processar relatorio" id="btn-processar-collapsed" class="sb-collapsed-processar" onclick="document.getElementById('btn-processar').click()"></div>
+                        <div title="Saída" onclick="NitSidebar.expandir()"></div>
+                    </div>
+                </aside>
+
+                <!-- KANBAN AREA ──────────────────────────────────────── -->
+                <div class="kanban-area">
+                    <div class="painel-operacional-wrapper">
+                        <div id="kanban-wrapper">
+                            <div class="kanban-board">
+                                <div class="kanban-column" id="coluna-espera">
+                                    <div class="kanban-column-header">
+                                        <span class="header-text cor-atendimento">AGUARDANDO</span>
+                                        <span class="card-count" id="count-espera">0</span>
+                                    </div>
+                                    <div class="kanban-column-filter">
+                                        <input type="text" class="kanban-search" data-coluna="coluna-espera" placeholder="Buscar nesta coluna">
+                                    </div>
+                                    <div class="kanban-cards-container"></div>
+                                </div>
+                                <div class="kanban-column" id="coluna-vl">
+                                    <div class="kanban-column-header">
+                                        <span class="header-text cor-via-livre">VIA LIVRE</span>
+                                        <span class="card-count" id="count-vl">0</span>
+                                    </div>
+                                    <div class="kanban-column-filter">
+                                        <input type="text" class="kanban-search" data-coluna="coluna-vl" placeholder="Buscar nesta coluna">
+                                    </div>
+                                    <div class="kanban-cards-container"></div>
+                                </div>
+                                <div class="kanban-column" id="coluna-amc">
+                                    <div class="kanban-column-header">
+                                        <span class="header-text cor-amc">AMC</span>
+                                        <span class="card-count" id="count-amc">0</span>
+                                    </div>
+                                    <div class="kanban-column-filter">
+                                        <input type="text" class="kanban-search" data-coluna="coluna-amc" placeholder="Buscar nesta coluna">
+                                    </div>
+                                    <div class="kanban-cards-container"></div>
+                                </div>
+                                <div class="kanban-column" id="coluna-sem-necessidade">
+                                    <div class="kanban-column-header">
+                                        <span class="header-text cor-sem-necessidade">SEM NECESSIDADE</span>
+                                        <span class="card-count" id="count-sem-necessidade">0</span>
+                                    </div>
+                                    <div class="kanban-column-filter">
+                                        <input type="text" class="kanban-search" data-coluna="coluna-sem-necessidade" placeholder="Buscar nesta coluna">
+                                    </div>
+                                    <div class="kanban-cards-container"></div>
+                                </div>
+                                <div class="kanban-column" id="coluna-normalizados">
+                                    <div class="kanban-column-header">
+                                        <button id="btn-toggle-norm" onclick="NitNormalizados.toggle()" title="Recolher coluna"></button>
+                                        <div class="norm-collapsed-group">
+                                            <span class="header-text cor-normalizado">NORMALIZADOS</span>
+                                            <span class="card-count" id="count-normalizados">0</span>
+                                        </div>
+                                    </div>
+                                    <div class="kanban-column-filter">
+                                        <input type="text" class="kanban-search" data-coluna="coluna-normalizados" placeholder="Buscar nesta coluna">
+                                    </div>
+                                    <div class="kanban-cards-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+
+
+<div id="tab-reboques" class="tab-content">
+<div class="nit-reb-layout">
+
+    <!-- ═══ SIDEBAR ════════════════════════════════════════════════════════ -->
+    <aside id="nit-rb-sidebar">
+        <button id="nit-rb-btn-toggle" aria-expanded="true" title="Recolher painel"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+
+        <!-- Processar Plantão -->
+        <div class="nit-rb-sb-section entrada" style="border-bottom:1px solid var(--color-border)">
+            <div class="nit-rb-sb-body">
+                <div class="sb-inner sb-inner-circulo">
+                    <div class="sb-circulo-wrap">
+                        <div class="sb-ring-outer"><div class="sb-ring-inner"><div class="sb-circulo">
+                            <textarea id="nit-rb-bruto" class="sb-textarea-circulo" placeholder=""></textarea>
+                            <div id="nit-rb-bruto-placeholder" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;color:rgba(250,250,250,0.55);font-size:11px;font-family:var(--font-family-mono);text-align:center;padding:0 20px;line-height:1.6;transition:opacity .2s;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg><span style="margin-top:8px">Cole a lista aqui…</span>
+                            </div>
+                        </div></div></div>
+                    </div>
+                    <button type="button" id="nit-rb-btn-processar" class="sb-btn-processar-full"><span class="sb-label">Processar</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Balanço -->
+        <div class="nit-rb-sb-section" id="nit-rb-sec-balanco">
+            <div class="nit-rb-sb-section-header" id="nit-rb-sec-balanco-header">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M3 9l9-7 9 7"/><path d="M3 15l9 7 9-7"/></svg><span class="nit-rb-sb-header-label">Balanço</span>
+                <span class="nit-rb-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+            <div class="nit-rb-sb-body">
+                <div class="nit-rb-sb-inner">
+                    <div class="nit-rb-balanco-grupo">
+                        <div class="nit-rb-balanco-linha"><span>Disponível</span><span id="nit-rb-bal-disp" class="nit-rb-bal-val ok">0</span></div>
+                        <div class="nit-rb-balanco-linha"><span>Atuando</span>  <span id="nit-rb-bal-atua" class="nit-rb-bal-val atv">0</span></div>
+                        <div class="nit-rb-balanco-linha"><span>Total</span>    <span id="nit-rb-bal-total" class="nit-rb-bal-val">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ações -->
+        <div class="nit-rb-sb-section" id="nit-rb-sec-acoes">
+            <div class="nit-rb-sb-section-header" id="nit-rb-sec-acoes-header">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="nit-rb-sb-header-label">Ações</span>
+                <span class="nit-rb-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+            <div class="nit-rb-sb-body">
+                <div class="nit-rb-sb-inner">
+                    <button id="nit-reboque-btn-add-reboquista"  class="nit-rb-sb-btn"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Adicionar Reboquista</button>
+                    <button id="nit-reboque-btn-relatorio" class="nit-rb-sb-btn nit-rb-sb-btn-destaque"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Relatório de Reboques</button>
+                    <button id="nit-reboque-btn-limpar"          class="nit-rb-sb-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6"/><path d="m12 9 3.5 3.5"/><path d="M16.5 5.5a2.121 2.121 0 0 1 3 3L7 21H3v-4L16.5 5.5z"/></svg> Limpar Plantão</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collapsed icons -->
+        <div class="nit-rb-collapsed-icons">
+            <button title="Processar" onclick="document.getElementById('nit-rb-sidebar').classList.remove('collapsed')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></button>
+            <button title="Balanço"   onclick="document.getElementById('nit-rb-sidebar').classList.remove('collapsed')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M3 9l9-7 9 7"/><path d="M3 15l9 7 9-7"/></svg></button>
+            <button title="Ações"     onclick="document.getElementById('nit-rb-sidebar').classList.remove('collapsed')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
+        </div>
+    </aside>
+
+    <!-- ═══ KANBAN ════════════════════════════════════════════════════════ -->
+    <div class="nit-reb-board">
+
+        <!-- DISPONÍVEIS -->
+        <div class="nit-reb-column">
+            <div class="nit-reb-col-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                <span class="header-text cor-normalizado">DISPONÍVEIS</span>
+                <span class="nit-reb-count" id="nit-reb-count-disponiveis">0</span>
+            </div>
+            <div class="nit-reb-col-filter">
+                <input type="text" id="nit-reb-search-disponiveis" placeholder="Buscar nesta coluna">
+            </div>
+            <div id="nit-reb-cards-disponiveis" class="nit-reb-cards"></div>
+        </div>
+
+        <!-- ATUANDO -->
+        <div class="nit-reb-column">
+            <div class="nit-reb-col-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                <span class="header-text cor-atuando">ATUANDO</span>
+                <span class="nit-reb-count" id="nit-reb-count-atuando">0</span>
+            </div>
+            <div class="nit-reb-col-filter">
+                <input type="text" id="nit-reb-search-atuando" placeholder="Buscar nesta coluna">
+            </div>
+            <div id="nit-reb-cards-atuando" class="nit-reb-cards"></div>
+        </div>
+
+        <!-- OCORRÊNCIAS EM ANDAMENTO -->
+        <div class="nit-reb-column">
+            <div class="nit-reb-col-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span class="header-text cor-amc">OCORRÊNCIAS EM ANDAMENTO</span>
+                <span class="nit-reb-count" id="nit-reb-count-eventos">0</span>
+                <button id="nit-reboque-btn-nova-ocorrencia" class="nit-rb-col-add" title="Nova Ocorrência">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nova
+                </button>
+            </div>
+            <div class="nit-reb-col-search">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="nit-reboque-busca-eventos" placeholder="Buscar tipo, local, equipe…">
+            </div>
+            <div id="nit-reboques-eventos" class="nit-reb-cards"></div>
+        </div>
+
+    </div>
+</div>
+
+    <!-- ═══ MODAL DE ACIONAMENTO (centralizado) ════════════════════════════ -->
+    <div id="nit-reboque-acionamento">
+        <div class="nit-reb-acion-box">
+            <div class="nit-reb-modal-header">
+                <span id="nit-reboque-acion-titulo">Registrar Ocorrência</span>
+            </div>
+            <div class="nit-reb-form">
+                <div><label>Tipo de Evento *</label><input type="text" id="nit-reboque-acion-tipo" placeholder="Ex: ACIDENTE, PANE, REMOÇÃO…" autocomplete="off"></div>
+                <div><label>Endereço *</label><input type="text" id="nit-reboque-acion-endereco" placeholder="Local da ocorrência" autocomplete="off"></div>
+                <div><label>Horário</label><input type="time" id="nit-reboque-acion-horario"></div>
+                <div><label>Observações</label><textarea id="nit-reboque-acion-obs" rows="3" placeholder="Informações adicionais…"></textarea></div>
+            </div>
+            <div class="nit-reb-form-footer">
+                <button id="nit-reboque-acion-btn-cancelar" class="btn btn-secundario">Cancelar</button>
+                <button id="nit-reboque-acion-btn-confirmar" class="btn btn-primario" style="display:flex;align-items:center;gap:6px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MODAL: editar reboquista ════════════════════════════════════ -->
+    <div id="nit-reboque-modal-edicao" class="nit-reb-modal-overlay">
+        <div class="nit-reb-modal">
+            <div class="nit-reb-modal-header" id="nit-reboque-edit-titulo">Editar Reboquista</div>
+            <input type="hidden" id="nit-reboque-edit-id">
+            <div class="nit-reb-form">
+                <div><label>Nome *</label><input type="text" id="nit-reboque-edit-nome" placeholder="Nome do reboquista"></div>
+                <div><label>VT</label><input type="text" id="nit-reboque-edit-vt" placeholder="Número da viatura"></div>
+                <div><label>Placa</label><input type="text" id="nit-reboque-edit-placa" placeholder="Placa do veículo"></div>
+                <div><label>Plantão até</label><input type="text" id="nit-reboque-edit-plantao" placeholder="Ex: 18:00hs"></div>
+                <div><label>Smart</label><input type="text" id="nit-reboque-edit-smart" placeholder="Ex: (85) 98765-4321"></div>
+            </div>
+            <div class="nit-reb-form-footer">
+                <button id="nit-reboque-edit-btn-cancelar" class="btn btn-secundario">Cancelar</button>
+                <button id="nit-reboque-edit-btn-salvar"   class="btn btn-primario" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MODAL: relatório ════════════════════════════════════════════ -->
+    <div id="nit-reboque-modal-relatorio" class="nit-reb-modal-overlay">
+        <div class="nit-reb-modal larga">
+            <div class="nit-reb-modal-header"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Relatório de Reboques</div>
+            <div class="nit-reb-form"><textarea id="nit-reboque-rel-texto" readonly></textarea></div>
+            <div class="nit-reb-form-footer">
+                <button id="nit-reboque-rel-fechar" class="btn btn-secundario">Fechar</button>
+                <button id="nit-reboque-rel-copiar" class="btn btn-primario" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Copiar</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+    <!-- DATALISTS ──────────────────────────────────────────────────────── -->
+    <datalist id="lista-operadores-datalist"></datalist>
+    <datalist id="lista-supervisores"></datalist>
+    <datalist id="lista-monitores"></datalist>
+    <datalist id="lista-locais-datalist"></datalist>
+    <datalist id="lista-qrus-datalist"></datalist>
+    <!-- Banco de recursos — alimentados por NitRecursos -->
+    <datalist id="datalist-central-equipes"></datalist>
+    <datalist id="datalist-central-vts"></datalist>
+    <datalist id="lista-turnos">
+        <option value="MANHÃ"></option>
+        <option value="TARDE"></option>
+        <option value="NOITE"></option>
+    </datalist>
+
+    <!-- MODAIS ─────────────────────────────────────────────────────────── -->
+    <div id="modal-relatorio" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">Relatório Semafórico</div>
+            <div class="modal-body">
+                <textarea id="modal-relatorio-texto" class="mono-font" readonly rows="15"
+                    style="width:100%;border:none;resize:none;background:var(--color-bg);color:var(--color-text-primary);font-size:13px;line-height:1.6;padding:8px;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-copiar" class="btn btn-primario">Copiar</button>
+                <button id="btn-modal-fechar" class="btn btn-secundario">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-despacho-semaforo" class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal-container">
+            <div class="modal-header">Despachar Equipe de Operação</div>
+            <div class="modal-body">
+                <input type="hidden" id="despacho-semaforo-card-id">
+                <div class="form-group">
+                    <label for="despacho-semaforo-equipe">Equipe / Representante:</label>
+                    <input type="text" id="despacho-semaforo-equipe" placeholder="Nome do responsável" list="lista-operadores-datalist">
+                </div>
+                <div class="form-group">
+                    <label for="despacho-semaforo-vt">Viatura (VT):</label>
+                    <input type="text" id="despacho-semaforo-vt" placeholder="Número da viatura (opcional)">
+                </div>
+                <div class="form-group" id="grupo-apoio" style="border-top:1px solid var(--color-border);padding-top:12px;margin-top:4px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
+                        <input type="checkbox" id="despacho-tem-apoio" style="accent-color:var(--color-primary);">
+                        <span>+ Adicionar equipe de apoio</span>
+                    </label>
+                    <div id="grupo-apoio-campos" style="display:none;margin-top:10px;flex-direction:column;gap:8px;">
+                        <input type="text" id="despacho-apoio-equipe" placeholder="Equipe de apoio" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-primary);font-size:13px;font-family:var(--font-family-sans);">
+                        <input type="text" id="despacho-apoio-vt" placeholder="VT de apoio (opcional)" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-primary);font-size:13px;font-family:var(--font-family-sans);">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Tipo de despacho:</label>
+                    <div style="display:flex; gap:8px; margin-top:4px;">
+                        <button type="button" id="despacho-tipo-vl"
+                            style="flex:1;height:36px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text-secondary);cursor:pointer;transition:all .15s;"
+                            onclick="Semaforo.selecionarTipoDespacho('vl')">🟠 Via Livre</button>
+                        <button type="button" id="despacho-tipo-amc"
+                            style="flex:1;height:36px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text-secondary);cursor:pointer;transition:all .15s;"
+                            onclick="Semaforo.selecionarTipoDespacho('amc')">🔵 AMC</button>
+                    </div>
+                    <input type="hidden" id="despacho-semaforo-tipo" value="vl">
+                </div>
+                <div class="form-group">
+                    <label for="despacho-mover-coluna">Mover card para coluna:</label>
+                    <select id="despacho-mover-coluna" class="nit-select">
+                        <option value="">— manter na coluna atual —</option>
+                        <option value="coluna-espera">Aguardando Atendimento</option>
+                        <option value="coluna-vl">Via Livre</option>
+                        <option value="coluna-amc">AMC</option>
+                        <option value="coluna-sem-necessidade">Sem Necessidade</option>
+                    </select>
+                    <small style="color:var(--color-text-tertiary);font-size:11px;">Para usuários de teclado: selecione a coluna destino antes de confirmar.</small>
+                </div>
+                <div class="despacho-preview" id="despacho-preview" role="status">
+                    <div class="despacho-preview-title">Confirmar despacho</div>
+                    <div class="despacho-preview-grid">
+                        <div class="despacho-preview-item"><span class="despacho-preview-label">Código</span><span class="despacho-preview-value" id="dp-cod">—</span></div>
+                        <div class="despacho-preview-item"><span class="despacho-preview-label">Tipo</span><span class="despacho-preview-value" id="dp-tipo">—</span></div>
+                        <div class="despacho-preview-item" style="grid-column:1/-1;"><span class="despacho-preview-label">Cruzamento</span><span class="despacho-preview-value" id="dp-loc" style="font-size:12px;">—</span></div>
+                        <div class="despacho-preview-item"><span class="despacho-preview-label">Equipe</span><span class="despacho-preview-value" id="dp-eq">—</span></div>
+                        <div class="despacho-preview-item"><span class="despacho-preview-label">Viatura</span><span class="despacho-preview-value" id="dp-vt">—</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="btn-despacho-semaforo-confirmar" class="btn btn-primario" style="flex:2;min-width:120px;">Confirmar Despacho</button>
+                <button id="btn-encerrar-operacao" class="btn"
+                    style="flex:1;min-width:100px;background:rgba(239,68,68,0.12);color:var(--color-danger);border-color:rgba(239,68,68,0.25);display:none;">
+                    <i class="fas fa-stop-circle"></i> Encerrar Operação
+                </button>
+                <button id="btn-despacho-semaforo-cancelar" class="btn btn-secundario" style="flex:1;min-width:80px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CENTRAL DA OCORRÊNCIA ────────────────────────────────────────── -->
+    <div id="modal-central-ocorrencia" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Central da Ocorrência">
+        <div class="modal-container nit-central-container">
+
+            <!-- Header -->
+            <div class="nit-central-header">
+                <!-- Zona 1: Identidade do semáforo -->
+                <div class="nit-central-header-top">
+                    <span class="nit-central-codigo" id="central-codigo">---</span>
+                    <button class="nit-central-fechar" id="btn-central-fechar" aria-label="Fechar">✕</button>
+                </div>
+                <div class="nit-central-endereco" id="central-endereco"></div>
+                <div class="nit-central-tipo-linha" id="central-tipo-linha"></div>
+
+                <!-- Divider -->
+                <div class="nit-central-divider"></div>
+
+                <!-- Zona 2: Status operacional -->
+                <div class="nit-central-status-faixa">
+                    <div class="nit-central-status-operacional" id="central-status-operacional"></div>
+                </div>
+
+                <!-- Zona 2b: Rendição agendada (condicional) -->
+                <div class="nit-central-agend-banner" id="central-agend-banner" style="display:none"></div>
+
+                <!-- Zona 2c: Observação completa (colapsável) -->
+                <div class="nit-central-obs-faixa" id="central-obs-faixa" style="display:none">
+                    <button class="nit-central-obs-toggle" id="central-obs-toggle" aria-expanded="false">
+                        <span id="central-obs-preview"></span>
+                        <span class="nit-central-obs-chevron">▼</span>
+                    </button>
+                    <div class="nit-central-obs-corpo" id="central-obs-corpo" style="display:none">
+                        <p id="central-obs-texto"></p>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="nit-central-divider"></div>
+
+                <!-- Zona 3: Timers SLA -->
+                <div class="nit-central-tempos-card">
+                    <div class="nit-central-tempos">
+                        <div class="nit-central-tempo">
+                            <span class="nit-central-tempo-label">⏱ Registro</span>
+                            <span class="nit-central-tempo-valor" id="central-tempo-sla">--:--</span>
+                        </div>
+                        <div class="nit-central-tempo-sep"></div>
+                        <div class="nit-central-tempo">
+                            <span class="nit-central-tempo-label">⏱ Operação</span>
+                            <span class="nit-central-tempo-valor nit-central-tempo-op" id="central-tempo-op">--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultado final (normalizado) -->
+                <div class="nit-central-resultado" id="central-resultado" style="display:none">
+                    <span class="nit-central-resultado-periodo" id="central-resultado-periodo"></span>
+                    <span class="nit-central-resultado-total" id="central-resultado-total" style="display:none"></span>
+                </div>
+            </div>
+
+            <!-- Zona 2: Decisão (tabs + painéis) -->
+            <div class="nit-central-zona2">
+
+            <!-- Tabs -->
+            <div class="nit-central-tabs" role="tablist">
+                <button class="nit-central-tab active" data-tab="despacho"  role="tab">Despacho</button>
+                <button class="nit-central-tab"        data-tab="apoio"     role="tab">Apoio</button>
+                <button class="nit-central-tab"        data-tab="rendicao"  role="tab">Rendição</button>
+                <div class="nit-tab-divider"></div>
+                <button class="nit-central-tab nit-tab-encerrar" data-tab="normalizar" role="tab">Normalizar</button>
+            </div>
+
+            <!-- Painéis -->
+            <div class="nit-central-body">
+
+                <!-- ── Despacho ─────────────────────────────────── -->
+                <div class="nit-central-panel active" id="central-panel-despacho">
+                    <div class="nit-central-tipo-selector" id="central-despacho-tipos">
+                        <button class="nit-central-tipo-btn active" data-tipo="vl">🟠 Via Livre</button>
+                        <button class="nit-central-tipo-btn" data-tipo="amc">🔵 AMC</button>
+                        <button class="nit-central-tipo-btn" data-tipo="sn">— Sem Necessidade</button>
+                    </div>
+                    <div id="central-despacho-campos-equipe">
+                        <div class="form-group">
+                            <label>Equipe / Representante</label>
+                            <input type="text" id="central-despacho-equipe" placeholder="Nome da equipe" list="datalist-central-equipes" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label>Viatura (VT)</label>
+                            <input type="text" id="central-despacho-vt" placeholder="Número" list="datalist-central-vts" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="nit-central-actions">
+                        <button class="btn btn-primario" id="btn-central-despachar">Despachar</button>
+                        <button class="btn nit-central-btn-encerrar" id="btn-central-encerrar" style="display:none">
+                            <i class="fas fa-stop-circle"></i> Encerrar Operação
+                        </button>
+                    </div>
+
+                    <!-- Registro de chegada ao local (aparece após despacho) -->
+                    <div class="nit-central-chegada" id="central-chegada-bloco" style="display:none">
+                        <div class="nit-central-chegada-status">
+                            <span class="nit-chegada-label">📍 Chegada ao local</span>
+                            <span class="nit-chegada-hora" id="central-chegada-hora">—</span>
+                        </div>
+                        <button class="btn nit-central-btn-chegada" id="btn-central-chegada">
+                            Registrar Chegada
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Apoio ────────────────────────────────────── -->
+                <div class="nit-central-panel" id="central-panel-apoio" style="display:none">
+                    <div class="nit-central-tipo-selector">
+                        <button class="nit-central-tipo-btn active" data-tipo="vl">🟠 Via Livre</button>
+                        <button class="nit-central-tipo-btn" data-tipo="amc">🔵 AMC</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Equipe de Apoio</label>
+                        <input type="text" id="central-apoio-equipe" placeholder="Nome da equipe" list="datalist-central-equipes" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label>Viatura (VT)</label>
+                        <input type="text" id="central-apoio-vt" placeholder="Número" list="datalist-central-vts" autocomplete="off">
+                    </div>
+                    <div class="nit-central-coluna-n-preview" id="central-apoio-preview" style="display:none">
+                        <span class="nit-central-coluna-n-label">Coluna N resultante:</span>
+                        <span class="nit-central-coluna-n-valor" id="central-apoio-coluna-n">—</span>
+                    </div>
+                    <div class="nit-central-actions">
+                        <button class="btn btn-primario" id="btn-central-apoio">Adicionar Apoio</button>
+                    </div>
+                </div>
+
+                <!-- ── Rendição ─────────────────────────────────── -->
+                <div class="nit-central-panel" id="central-panel-rendicao" style="display:none">
+
+                    <!-- Estado A: rendição agendada pendente → executar -->
+                    <div id="central-rendicao-agendada" style="display:none">
+                        <div class="nit-central-agend-execucao" id="central-agend-execucao-info"></div>
+                        <div class="form-group">
+                            <label>Hora real de execução</label>
+                            <input type="time" id="central-rendicao-hora-real">
+                        </div>
+                        <div class="nit-central-coluna-n-preview">
+                            <span class="nit-central-coluna-n-label">Coluna N resultante:</span>
+                            <span class="nit-central-coluna-n-valor" id="central-rendicao-coluna-n-exec">—</span>
+                        </div>
+                        <div class="nit-central-actions">
+                            <button class="btn btn-secundario" id="btn-central-cancelar-agend">Cancelar Agendamento</button>
+                            <button class="btn btn-primario"   id="btn-central-executar-rendicao">Executar Rendição</button>
+                        </div>
+                    </div>
+
+                    <!-- Estado B: sem agendamento → agendar nova rendição -->
+                    <div id="central-rendicao-normal">
+                        <div class="nit-central-tipo-selector">
+                            <button class="nit-central-tipo-btn active" data-tipo="vl">🟠 Via Livre</button>
+                            <button class="nit-central-tipo-btn" data-tipo="amc">🔵 AMC</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Equipe que Entra</label>
+                            <input type="text" id="central-rendicao-equipe" placeholder="Nome da equipe" list="datalist-central-equipes" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label>Viatura (VT)</label>
+                            <input type="text" id="central-rendicao-vt" placeholder="Número" list="datalist-central-vts" autocomplete="off">
+                        </div>
+                        <div class="nit-central-coluna-n-preview">
+                            <span class="nit-central-coluna-n-label">Coluna N resultante:</span>
+                            <span class="nit-central-coluna-n-valor" id="central-rendicao-coluna-n">—</span>
+                        </div>
+                        <div class="nit-central-agendamento">
+                            <label class="nit-central-agendar-label">
+                                <input type="checkbox" id="central-rendicao-agendar" class="nit-central-agendar-check">
+                                <span>Agendar para horário específico</span>
+                            </label>
+                            <div class="nit-central-agendar-campos" id="central-rendicao-agendar-campos" style="display:none">
+                                <div class="form-group" style="margin-top:8px;margin-bottom:0">
+                                    <label>Horário da Rendição</label>
+                                    <input type="time" id="central-rendicao-hora-agendada">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="nit-central-actions">
+                            <button class="btn btn-primario" id="btn-central-rendicao">Registrar Rendição</button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ── Normalizar ───────────────────────────────── -->
+                <div class="nit-central-panel" id="central-panel-normalizar" style="display:none">
+                    <div class="form-group">
+                        <label>Data de Fim</label>
+                        <input type="date" id="central-norm-data">
+                    </div>
+                    <div class="form-group">
+                        <label>Hora de Fim</label>
+                        <input type="time" id="central-norm-hora">
+                    </div>
+                    <div class="form-group">
+                        <label>Observação Final</label>
+                        <textarea id="central-norm-obs" rows="3" placeholder="Descreva a resolução..."></textarea>
+                    </div>
+                    <div class="nit-central-actions">
+                        <button class="btn btn-primario" id="btn-central-normalizar">Normalizar Ocorrência</button>
+                    </div>
+                </div>
+
+            </div><!-- /nit-central-body -->
+            </div><!-- /nit-central-zona2 -->
+
+            <!-- Histórico colapsável -->
+            <div class="nit-central-historico">
+                <div class="nit-central-historico-header" id="central-hist-header" role="button" tabindex="0" aria-expanded="false">
+                    <span class="nit-central-historico-titulo">Histórico</span>
+                    <span class="nit-central-hist-ultimo" id="central-hist-ultimo">—</span>
+                    <span class="nit-central-hist-chevron" id="central-hist-chevron">▼</span>
+                </div>
+                <div class="nit-central-historico-lista" id="central-historico-lista">
+                    <div class="nit-central-historico-vazio">Nenhum registro de operação.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <div id="modal-edicao" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">Editar Ocorrência</div>
+            <div class="modal-body">
+                <input type="hidden" id="edicao-card-id">
+                <div class="form-group"><label>Código:</label><input type="text" id="edicao-codigo" readonly></div>
+                <div class="form-group"><label>Endereço:</label><input type="text" id="edicao-endereco"></div>
+                <div class="form-group">
+                    <label>Problema:</label>
+                    <select id="edicao-problema" class="nit-select">
+                        <option value="APAGADO">APAGADO</option>
+                        <option value="PISCANTE">PISCANTE</option>
+                        <option value="TRAVADO">TRAVADO</option>
+                        <option value="INTERMITENTE">INTERMITENTE</option>
+                        <option value="N/I">N/I</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-edicao-salvar" class="btn btn-primario">Salvar</button>
+                <button id="btn-edicao-cancelar" class="btn btn-secundario">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL NORMALIZAR ───────────────────────────────────────────────────── -->
+    <div id="modal-normalizar" class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal-container" style="max-width:420px;">
+            <div class="modal-header" style="display:flex;align-items:center;gap:10px;">
+                <span style="color:var(--color-success);font-size:18px;">✅</span>
+                <span>Normalizar Ocorrência</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="norm-card-id">
+                <div style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:16px;">
+                    <div style="font-size:10px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Ocorrência</div>
+                    <div id="norm-card-info" style="font-size:13px;font-weight:600;color:var(--color-text-primary);"></div>
+                </div>
+                <div class="form-group">
+                    <label for="norm-data-fim">Data de Normalização <span style="color:var(--color-danger)">*</span></label>
+                    <input type="date" id="norm-data-fim" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-primary);font-size:14px;font-family:var(--font-family-sans);color-scheme:dark;">
+                </div>
+                <div class="form-group">
+                    <label for="norm-hora-fim">Hora de Normalização <span style="color:var(--color-danger)">*</span></label>
+                    <input type="time" id="norm-hora-fim" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-primary);font-size:14px;font-family:var(--font-family-sans);color-scheme:dark;">
+                </div>
+                <div class="form-group">
+                    <label for="norm-obs">Observação</label>
+                    <textarea id="norm-obs" rows="3" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-primary);font-size:13px;font-family:var(--font-family-sans);resize:none;"></textarea>
+                </div>
+                <div id="norm-erro" style="display:none;color:var(--color-danger);font-size:12px;margin-top:-8px;margin-bottom:8px;padding:8px 10px;background:rgba(239,68,68,0.08);border-radius:6px;border:1px solid rgba(239,68,68,0.2);"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-norm-confirmar" class="btn btn-primario" style="background:var(--color-success);border-color:var(--color-success);">
+                    <i class="fas fa-check"></i> Confirmar Normalização
+                </button>
+                <button id="btn-norm-cancelar" class="btn btn-secundario">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-historico" class="modal-overlay">
+        <div class="modal-container" style="max-width: 800px;">
+            <div class="modal-header">Histórico de Ações</div>
+            <div class="modal-body" id="historico-body" style="max-height: 70vh; overflow-y: auto;"></div>
+            <div class="modal-footer">
+                <button id="btn-historico-fechar" class="btn btn-secundario">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-confirmar-generico" class="modal-overlay">
+        <div class="modal-container" style="max-width:420px;">
+            <div class="modal-header" id="modal-confirmar-titulo" style="color:var(--color-danger);">Confirmar Ação</div>
+            <div class="modal-body" style="text-align:center; padding:24px 16px;">
+                <p id="modal-confirmar-msg" style="font-size:15px; line-height:1.6;"></p>
+            </div>
+            <div class="modal-footer" style="justify-content:center; gap:16px;">
+                <button id="btn-confirmar-generico-ok" class="btn"
+                    style="background:var(--color-danger);color:#fff;border-color:var(--color-danger);min-width:120px;">
+                    Confirmar
+                </button>
+                <button id="btn-confirmar-generico-cancel" class="btn btn-secundario" style="min-width:100px;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-detalhes" class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal-container" style="max-width:540px;">
+            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;">
+                <span>Detalhes da Ocorrência</span>
+                <span id="detalhe-coluna-badge" class="detalhe-coluna-badge"></span>
+            </div>
+            <div class="modal-body">
+                <div class="detalhe-grid">
+                    <div class="detalhe-item"><span class="detalhe-label">Código</span><span class="detalhe-valor" id="det-codigo">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Problema</span><span class="detalhe-valor" id="det-problema">—</span></div>
+                    <div class="detalhe-item detalhe-full"><span class="detalhe-label">Endereço / Cruzamento</span><span class="detalhe-valor" id="det-endereco">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Início</span><span class="detalhe-valor" id="det-inicio">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Fim</span><span class="detalhe-valor" id="det-fim">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Reincidente</span><span class="detalhe-valor" id="det-reincidente">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Tipo</span><span class="detalhe-valor" id="det-tipo">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Equipe despachada</span><span class="detalhe-valor" id="det-equipe">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Viatura (VT)</span><span class="detalhe-valor" id="det-viatura">—</span></div>
+                    <div class="detalhe-item detalhe-full"><span class="detalhe-label">Observações</span><span class="detalhe-valor" id="det-obs" style="white-space:pre-wrap;min-height:50px;">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Data referência</span><span class="detalhe-valor" id="det-data">—</span></div>
+                    <div class="detalhe-item"><span class="detalhe-label">Operador</span><span class="detalhe-valor" id="det-operador">—</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-detalhes-fechar" class="btn btn-secundario">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BUSCA GLOBAL ───────────────────────────────────────────────────── -->
+    <div id="busca-global-overlay" role="dialog" aria-modal="true" aria-label="Busca global">
+        <div id="busca-global-panel">
+            <div id="busca-global-input-wrap">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;color:var(--color-text-secondary)"><path d="M10 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Zm-.618 3.09a4.5 4.5 0 1 1 .707-.707l2.914 2.913a.5.5 0 0 1-.707.708L9.382 9.59Z" fill="currentColor"/></svg>
+                <input type="search" id="busca-global-input" placeholder="Buscar por código, endereço ou problema…" autocomplete="off" spellcheck="false">
+                <button id="busca-global-esc" title="Fechar (Esc)">ESC</button>
+            </div>
+            <div id="busca-global-resultados"></div>
+            <div id="busca-global-vazio">Nenhum card encontrado.</div>
+        </div>
+    </div>
+
+    <!-- TOAST / UNDO ───────────────────────────────────────────────────── -->
+
+    <!-- MODAL VIRADA DE DIA ──────────────────────────────────────────────────── -->
+    <div id="modal-virada-dia" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-virada-titulo">
+        <div class="modal-container" style="max-width:480px;">
+            <div class="modal-header" id="modal-virada-titulo" style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">🌅</span>
+                <span>Verificação de Turno</span>
+            </div>
+            <div class="modal-body" style="padding:24px 20px;">
+                <div id="modal-virada-corpo"></div>
+            </div>
+            <div class="modal-footer" style="gap:10px;">
+                <button id="btn-virada-processar" class="btn btn-primario">
+                    <i class="fas fa-paste"></i> Processar relatório pendente
+                </button>
+                <button id="btn-virada-ok" class="btn btn-secundario">
+                    <i class="fas fa-check"></i> Já verifiquei
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <div id="undo-toast" class="undo-toast" role="status" aria-live="polite">
+        <div class="undo-toast-row">
+            <span class="undo-toast-msg" id="undo-toast-msg"></span>
+            <button class="undo-toast-btn" id="undo-toast-btn" onclick="window._nitUndoFn && window._nitUndoFn()">Desfazer</button>
+        </div>
+        <div class="undo-progress"><div class="undo-progress-bar" id="undo-progress-bar"></div></div>
+    </div>
+
+    <!-- APP LOGIC ──────────────────────────────────────────────────────── -->
+    
+    <script src="nit.js?v=131homolog1"></script>
+    <script src="reboques.js?v=20260709"></script>
+
+</body>
+</html>
