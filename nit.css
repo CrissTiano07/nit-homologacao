@@ -2031,3 +2031,25 @@
 .nit-central-hist-detalhe { font-size: 12px; color: #94a3b8; }
 .nit-central-hist-op      { font-size: 10px; color: #94a3b8; }
 .nit-central-hist-ts      { font-size: 11px; color: #94a3b8; flex-shrink: 0; font-variant-numeric: tabular-nums; margin-top: 2px; text-align: right; min-width: 36px; }
+
+/* ── 13.2 · Mensagens do NIT (MENSAGENS.md) — aparência provisória; visual final na próxima etapa ── */
+.nd-painel { margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.nd-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.nd-titulo { font-size: 18px; font-weight: 800; letter-spacing: .5px; color: var(--color-warning); }
+.nd-sub { font-size: 13px; opacity: .9; }
+.nd-card { border-left: 5px solid var(--color-warning); border-radius: 8px; padding: 10px 12px;
+           background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.nd-card.nd-vermelho { border-left-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 14%, transparent); }
+.nd-card.nd-ambar-info { opacity: .9; }
+.nd-card.nd-perguntado { opacity: .55; }
+.nd-t { font-weight: 800; font-size: 15px; letter-spacing: .3px; }
+.nd-l2 { font-size: 13px; margin-top: 2px; }
+.nd-estado { font-size: 12px; font-weight: 700; margin-top: 4px; }
+.nd-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.nd-btn { border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 800; letter-spacing: .4px;
+          border-radius: 6px; padding: 6px 14px; cursor: pointer; min-height: 32px; }
+.nd-btn:hover, .nd-btn:focus-visible { background: color-mix(in srgb, currentColor 15%, transparent); }
+.nd-btn-peq { font-size: 12px; padding: 4px 10px; font-weight: 700; opacity: .9; }
+.nd-confirmacao { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; font-weight: 700;
+                  border-left: 5px solid var(--color-success); background: color-mix(in srgb, var(--color-success) 14%, transparent); }
+.card-retificado { font-size: 11px; font-weight: 700; color: var(--color-info); margin: 2px 0; }
