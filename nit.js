@@ -258,6 +258,7 @@
 
         // ── ciclo ──
         novoProcessamento() { this._confirmacao = null; this._modoAlterado = true; },
+        _recolhido: false,
 
         // Chamado pela conferência logo após processar.
         definirItens(itens, { aposProcessar }) {
@@ -272,6 +273,7 @@
                 const ambar = new Set(this._visiveis().filter(i => i.nivel === 'ambar' && !this._perguntadoEm(i)).map(i => i.chave));
                 this._novos = [...ambar].filter(c => !antes.has(c)).length;
                 this._modoAlterado = this._novos > 0;
+                if (this._novos > 0) this._recolhido = false;
             } else this._itens = itens;
             this.render();
         },
@@ -323,8 +325,14 @@
             const btn = (acao, texto, cls = '') => { const b = mk('button', `nd-btn ${cls}`.trim(), texto); b.type = 'button'; b.dataset.acao = acao; return b; };
             painel.replaceChildren();
 
+            // Só pergunta (NIT-12/13/14) já perguntada → vira etiqueta compacta "esperando a fonte".
+            // Decisão (NIT-10/11/16) continua card inteiro: o operador ainda decide, mesmo depois de perguntar.
+            const soPergunta = i => i.pergunta && !(i.botoes && i.botoes.length);
+            const esperando = itens.filter(i => soPergunta(i) && this._perguntadoEm(i));
+            const ativos = itens.filter(i => !esperando.includes(i));
             const k = this.aguardandoOperador();
-            const comPergunta = itens.filter(i => i.pergunta);
+            const naoPerguntadas = itens.filter(i => i.pergunta && !this._perguntadoEm(i));
+
             const topo = mk('div', 'nd-topo');
             const tit = mk('div', 'nd-tit');
             if (k > 0 && this._modoAlterado) {
@@ -334,8 +342,11 @@
                 tit.append(mk('div', 'nd-titulo', `⚠ ${k} ${this._plural(k, 'SEMÁFORO ESPERA', 'SEMÁFOROS ESPERAM')} SUA RESPOSTA`)); // NIT-22
             }
             topo.append(tit);
-            if (comPergunta.length >= 2) topo.append(btn('PERGUNTAR_TODAS', '📋 PERGUNTAR TODAS', 'nd-btn-peq'));
-            if (tit.childNodes.length || comPergunta.length >= 2) painel.append(topo);
+            const acoesTopo = mk('div', 'nd-acoes-topo');
+            if (naoPerguntadas.length >= 2) acoesTopo.append(btn('PERGUNTAR_TODAS', '📋 PERGUNTAR TODAS', 'nd-btn-peq'));
+            if (itens.length) acoesTopo.append(btn('RECOLHER', this._recolhido ? `▼ MOSTRAR (${itens.length})` : '▲ RECOLHER', 'nd-btn-peq nd-btn-sutil'));
+            topo.append(acoesTopo);
+            painel.append(topo);
 
             if (this._confirmacao) {
                 const c = mk('div', 'nd-confirmacao');
@@ -343,19 +354,28 @@
                 if (this._confirmacao.desfazer) c.append(btn('DESFAZER', 'DESFAZER', 'nd-btn-peq'));
                 painel.append(c);
             }
+            if (this._recolhido) return;
 
-            for (const i of itens) {
+            const cardDe = i => {
                 const em = this._perguntadoEm(i);
-                const c = mk('div', `nd-card nd-${i.nivel}${em ? ' nd-perguntado' : ''}`);
+                const chip = esperando.includes(i);
+                const c = mk('div', `nd-card nd-${i.nivel}${em ? ' nd-perguntado' : ''}${chip ? ' nd-chip' : ''}`);
                 c.dataset.msg = i.msg; c.dataset.codigo = i.codigo; c.dataset.chave = i.chave;
                 c.append(mk('div', 'nd-t', i.titulo));
-                if (i.linha2) c.append(mk('div', 'nd-l2', i.linha2));
+                if (i.linha2 && !chip) c.append(mk('div', 'nd-l2', i.linha2));
                 if (em) c.append(mk('div', 'nd-estado', `⏳ PERGUNTADO ${this._hhmm(em)}`));
                 const bs = mk('div', 'nd-botoes');
                 (i.botoes || []).forEach(([acao, texto]) => bs.append(btn(acao, texto)));
-                if (i.pergunta) bs.append(btn('PERGUNTAR', '📋 PERGUNTAR', i.botoes?.length ? 'nd-btn-peq' : ''));
+                if (i.pergunta) bs.append(btn('PERGUNTAR', '📋 PERGUNTAR', (i.botoes?.length || chip) ? 'nd-btn-peq' : ''));
                 if (bs.childNodes.length) c.append(bs);
-                painel.append(c);
+                return c;
+            };
+            if (ativos.length) { const g = mk('div', 'nd-grade'); ativos.forEach(i => g.append(cardDe(i))); painel.append(g); }
+            if (esperando.length) {
+                const e = mk('div', 'nd-espera');
+                e.append(mk('span', 'nd-espera-rot', '⏳ ESPERANDO A FONTE'));
+                esperando.forEach(i => e.append(cardDe(i)));
+                painel.append(e);
             }
         },
 
@@ -365,6 +385,7 @@
             if (!b) return;
             const acao = b.dataset.acao;
             if (acao === 'DESFAZER') return this._desfazer();
+            if (acao === 'RECOLHER') { this._recolhido = !this._recolhido; return this.render(); }
             if (acao === 'PERGUNTAR_TODAS') return this._perguntar(this._visiveis().filter(i => i.pergunta));
             const chave = b.closest('.nd-card')?.dataset.chave;
             const item = this._itens.find(i => i.chave === chave);
@@ -376,11 +397,14 @@
         _copiar(texto) {
             this.ultimaCopia = texto;
             const reserva = () => {
+                const ta = document.createElement('textarea');
                 try {
-                    const ta = document.createElement('textarea');
-                    ta.value = texto; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px';
-                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+                    ta.value = texto; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
+                    ta.style.setProperty('position', 'fixed', 'important'); ta.style.setProperty('left', '-9999px', 'important');
+                    ta.style.setProperty('opacity', '0', 'important');
+                    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
                 } catch (e) { /* sem área de transferência: o texto fica em NitDecisoes.ultimaCopia */ }
+                finally { ta.remove(); }
             };
             try {
                 if (navigator.clipboard?.writeText) navigator.clipboard.writeText(texto).catch(reserva);
