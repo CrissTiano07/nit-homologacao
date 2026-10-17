@@ -258,7 +258,29 @@
 
         // ── ciclo ──
         novoProcessamento() { this._confirmacao = null; this._modoAlterado = true; },
-        _recolhido: false,
+
+        // Coluna "⚠ DECIDIR": primeira do kanban; só existe enquanto houver o que mostrar.
+        _coluna(existir) {
+            const board = document.querySelector('#tab-semaforo .kanban-board');
+            let col = document.getElementById('coluna-decidir');
+            if (!existir) { if (col) { col.remove(); NitColunas.layout(); } return null; }
+            if (!board) return null;
+            if (!col) {
+                col = document.createElement('div');
+                col.className = 'kanban-column col-recolhivel nd-coluna';
+                col.id = 'coluna-decidir';
+                col.innerHTML = `<div class="kanban-column-header">
+                        <button type="button" class="btn-toggle-col" title="Recolher / expandir"></button>
+                        <span class="header-text cor-decidir">⚠ DECIDIR</span>
+                        <span class="card-count" id="count-decidir">0</span>
+                    </div>
+                    <div class="nd-coluna-corpo"></div>`;
+                board.prepend(col);
+                NitColunas.ligar(col);
+                NitColunas.layout();
+            }
+            return col.querySelector('.nd-coluna-corpo');
+        },
 
         // Chamado pela conferência logo após processar.
         definirItens(itens, { aposProcessar }) {
@@ -273,7 +295,7 @@
                 const ambar = new Set(this._visiveis().filter(i => i.nivel === 'ambar' && !this._perguntadoEm(i)).map(i => i.chave));
                 this._novos = [...ambar].filter(c => !antes.has(c)).length;
                 this._modoAlterado = this._novos > 0;
-                if (this._novos > 0) this._recolhido = false;
+                if (this._novos > 0) NitColunas.definir('coluna-decidir', false);   // chegou decisão nova: abre a coluna
             } else this._itens = itens;
             this.render();
         },
@@ -311,16 +333,20 @@
             const itens = this._visiveis();
             this._chavesVisiveis = new Set(itens.filter(i => i.nivel === 'ambar').map(i => i.chave));
             let painel = document.getElementById('nit-integridade-processamento');
-            if (!itens.length && !this._confirmacao) { painel?.remove(); return; }
+            if (!itens.length && !this._confirmacao) { painel?.remove(); this._coluna(false); return; }
             if (!painel) {
                 painel = document.createElement('div');
                 painel.id = 'nit-integridade-processamento';
                 painel.className = 'nd-painel';
                 painel.setAttribute('role', 'region');
                 painel.setAttribute('aria-label', 'Decisões do relatório');
-                tab.prepend(painel);
                 painel.addEventListener('click', ev => this._clique(ev));
             }
+            const corpo = this._coluna(true);
+            if (corpo) { if (painel.parentElement !== corpo) corpo.append(painel); }
+            else if (painel.parentElement !== tab) tab.prepend(painel);   // sem kanban (reserva)
+            const contador = document.getElementById('count-decidir');
+            if (contador) contador.textContent = String(itens.length);
             const mk = (tag, cls, texto) => { const e = document.createElement(tag); if (cls) e.className = cls; if (texto != null) e.textContent = texto; return e; };
             const btn = (acao, texto, cls = '') => { const b = mk('button', `nd-btn ${cls}`.trim(), texto); b.type = 'button'; b.dataset.acao = acao; return b; };
             painel.replaceChildren();
@@ -344,9 +370,8 @@
             topo.append(tit);
             const acoesTopo = mk('div', 'nd-acoes-topo');
             if (naoPerguntadas.length >= 2) acoesTopo.append(btn('PERGUNTAR_TODAS', '📋 PERGUNTAR TODAS', 'nd-btn-peq'));
-            if (itens.length) acoesTopo.append(btn('RECOLHER', this._recolhido ? `▼ MOSTRAR (${itens.length})` : '▲ RECOLHER', 'nd-btn-peq nd-btn-sutil'));
             topo.append(acoesTopo);
-            painel.append(topo);
+            if (tit.childNodes.length || acoesTopo.childNodes.length) painel.append(topo);
 
             if (this._confirmacao) {
                 const c = mk('div', 'nd-confirmacao');
@@ -354,8 +379,6 @@
                 if (this._confirmacao.desfazer) c.append(btn('DESFAZER', 'DESFAZER', 'nd-btn-peq'));
                 painel.append(c);
             }
-            if (this._recolhido) return;
-
             const cardDe = i => {
                 const em = this._perguntadoEm(i);
                 const chip = esperando.includes(i);
@@ -385,7 +408,6 @@
             if (!b) return;
             const acao = b.dataset.acao;
             if (acao === 'DESFAZER') return this._desfazer();
-            if (acao === 'RECOLHER') { this._recolhido = !this._recolhido; return this.render(); }
             if (acao === 'PERGUNTAR_TODAS') return this._perguntar(this._visiveis().filter(i => i.pergunta));
             const chave = b.closest('.nd-card')?.dataset.chave;
             const item = this._itens.find(i => i.chave === chave);
@@ -844,9 +866,20 @@ const NitData = {
         const okEl  = document.getElementById('btn-confirmar-generico-ok');
         const canEl = document.getElementById('btn-confirmar-generico-cancel');
         // 13.2: rótulos opcionais (ex.: NIT-02 USAR / CANCELAR); voltam ao padrão ao fechar
-        const padrao = () => { if (okEl) okEl.textContent = 'Confirmar'; if (canEl) canEl.textContent = 'Cancelar'; };
+        const estilo = { ok: okEl?.getAttribute('style'), can: canEl?.getAttribute('style'), tit: titEl.getAttribute('style') };
+        const padrao = () => {
+            if (okEl)  { okEl.textContent  = 'Confirmar'; okEl.setAttribute('style', estilo.ok || ''); }
+            if (canEl) { canEl.textContent = 'Cancelar';  canEl.setAttribute('style', estilo.can || ''); }
+            titEl.setAttribute('style', estilo.tit || '');
+        };
         if (okEl)  okEl.textContent  = rotulos?.ok       || 'Confirmar';
         if (canEl) canEl.textContent = rotulos?.cancelar || 'Cancelar';
+        // 13.2: quando o seguro é cancelar (NIT-02), o destaque vai para CANCELAR e o título fica âmbar
+        if (rotulos?.seguro === 'cancelar' && okEl && canEl) {
+            okEl.setAttribute('style', 'background:transparent;color:inherit;border:1px solid var(--color-border);min-width:100px;');
+            canEl.setAttribute('style', 'background:var(--color-info);color:#fff;border-color:var(--color-info);min-width:120px;font-weight:700;');
+            titEl.style.color = 'var(--color-warning)';
+        }
         titEl.textContent = titulo;
         msgEl.innerHTML   = mensagem.replace(/\n/g, '<br>').replace(/\*(.*?)\*/g, '<strong>$1</strong>');
         _confirmCb = () => { padrao(); onConfirm(); };
@@ -1220,7 +1253,7 @@ const NitData = {
                     `Hoje é ${ddmm(NitData.hoje())}.`,
                     () => this._processarComValidacoes(texto, eventos),
                     null,
-                    { ok: 'USAR', cancelar: 'CANCELAR' }
+                    { ok: 'USAR', cancelar: 'CANCELAR', seguro: 'cancelar' }
                 );
                 return;
             }
@@ -3041,6 +3074,7 @@ const NitData = {
     NitSidebar.inicializar();
     NitNormalizar.inicializar();
     NitNormalizados.inicializar();
+    NitColunas.inicializar();
     inicializarBuscasPorColuna();
 
     // Toggle campos de apoio no modal de despacho
@@ -3560,9 +3594,62 @@ window.NitNormalizar = NitNormalizar;
             col.classList.toggle('collapsed', collapsed);
             board.classList.toggle('norm-collapsed', collapsed);
             localStorage.setItem(this._KEY, collapsed ? '1' : '0');
+            if (typeof NitColunas !== 'undefined') NitColunas.layout();
         },
     };
     window.NitNormalizados = NitNormalizados;
+
+    // ── 13.2: colunas recolhíveis (⚠ DECIDIR e SEM NECESSIDADE) + grade do kanban ──
+    // A grade do kanban era fixa em 5 colunas; agora acompanha as colunas presentes
+    // (a ⚠ DECIDIR aparece e some) e as recolhidas (faixa de 36px). Telas pequenas
+    // continuam com as regras do CSS (!important), que têm prioridade.
+    const NitColunas = {
+        _KEY: 'nit-colunas-recolhidas-v1',
+        _estado() { try { return JSON.parse(localStorage.getItem(this._KEY) || '{}') || {}; } catch (e) { return {}; } },
+        _salvar(e) { try { localStorage.setItem(this._KEY, JSON.stringify(e)); } catch (x) { /* sem armazenamento: ok */ } },
+
+        ligar(col) {
+            if (!col || col.dataset.recolhivel === '1') return;
+            col.dataset.recolhivel = '1';
+            col.classList.add('col-recolhivel');
+            const header = col.querySelector('.kanban-column-header');
+            if (!header) return;
+            if (!header.querySelector('.btn-toggle-col')) {
+                const b = document.createElement('button');
+                b.type = 'button'; b.className = 'btn-toggle-col'; b.title = 'Recolher / expandir';
+                header.prepend(b);
+            }
+            header.addEventListener('click', e => {
+                if (e.target.closest('input')) return;
+                this.definir(col.id, !col.classList.contains('collapsed'));
+            });
+            // a ⚠ DECIDIR nasce aberta; as demais lembram a escolha do operador neste computador
+            if (col.id !== 'coluna-decidir' && this._estado()[col.id]) this.definir(col.id, true);
+        },
+
+        definir(id, recolher) {
+            const col = document.getElementById(id);
+            if (!col) return;
+            col.classList.toggle('collapsed', !!recolher);
+            if (id !== 'coluna-decidir') { const e = this._estado(); e[id] = !!recolher; this._salvar(e); }
+            this.layout();
+        },
+
+        layout() {
+            const board = document.querySelector('#tab-semaforo .kanban-board');
+            if (!board) return;
+            const cols = [...board.children].filter(c => c.classList.contains('kanban-column'));
+            board.style.gridTemplateColumns = cols.map(c =>
+                c.classList.contains('collapsed') ? '36px'
+                : c.id === 'coluna-decidir' ? 'minmax(260px, 1.15fr)' : 'minmax(200px, 1fr)').join(' ');
+        },
+
+        inicializar() {
+            this.ligar(document.getElementById('coluna-sem-necessidade'));
+            this.layout();
+        },
+    };
+    window.NitColunas = NitColunas;
 
     function inicializarBuscasPorColuna() {
         document.querySelectorAll('.kanban-search').forEach(input => {
