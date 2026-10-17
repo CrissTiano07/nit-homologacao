@@ -44,9 +44,8 @@
         exec(fn) {
             if (!this.db) return undefined;
             const ref    = (db, path) => path ? db.ref(path) : db.ref();
-            // 13.1: toda gravação passa pelo indicador (só observa; não espera nem bloqueia)
-            const update = (r, data)  => NitGravacao.rastrear(r.update(data), `update ${r.toString ? r.toString() : ''}`);
-            const push   = (r, data)  => NitGravacao.rastrear(r.push(data), `push ${r.toString ? r.toString() : ''}`);
+            const update = (r, data)  => r.update(data);
+            const push   = (r, data)  => r.push(data);
             return fn(this.db, ref, update, push);
         },
 
@@ -66,130 +65,6 @@
             if (txt) { txt.textContent = s.text; txt.style.color = s.color; }
         },
     };
-
-    // ── GRAVAÇÃO: indicador de envio ao servidor (13.1, Mudança 6) ───────────
-    // Só OBSERVA as gravações feitas por NitFirebase.exec: não espera, não bloqueia,
-    // não refaz. O Firebase já aplica a mudança na tela na hora e guarda a fila
-    // enquanto não há conexão; este módulo mostra ao operador se há fila e avisa
-    // quando o servidor RECUSA uma gravação. Também guarda o último relatório
-    // processado do dia, para recuperar se a aba for fechada sem conexão.
-    const NitGravacao = {
-        _seq: 0,
-        _pendentes: new Map(),      // id → { desc, t0 }
-        _falhas: [],                // [{ desc, msg }]
-        _ATRASO_AVISO_MS: 1500,     // gravação normal é instantânea; só avisa se demorar
-        _CHAVE_RELATORIO: 'nit-ultimo-relatorio-v1',
-
-        rastrear(promessa, desc) {
-            if (!promessa || typeof promessa.then !== 'function') return promessa;
-            const id = ++this._seq;
-            this._pendentes.set(id, { desc, t0: Date.now() });
-            setTimeout(() => this._render(), this._ATRASO_AVISO_MS + 50);
-            promessa.then(
-                () => { this._pendentes.delete(id); this._render(); },
-                err => {
-                    this._pendentes.delete(id);
-                    this._falhas.push({ desc, msg: (err && (err.code || err.message)) || 'recusado' });
-                    this._render();
-                    const sem = this._semaforoDe(desc);
-                    showToast(`⚠️ ${sem ? 'Semáforo ' + sem : 'Uma alteração'} não foi salvo pelo servidor. Avise o desenvolvedor.`, 'error', 10000);
-                },
-            );
-            return promessa;
-        },
-
-        _semaforoDe(desc) {
-            const m = /kanban\/([^/_]+)_/.exec(desc || '');
-            return m ? m[1] : '';
-        },
-
-        _el() {
-            let el = document.getElementById('nit-gravacao-status');
-            if (el) return el;
-            const ref = document.getElementById('nit-firebase-status');
-            if (!ref) return null;
-            el = document.createElement('span');
-            el.id = 'nit-gravacao-status';
-            el.setAttribute('role', 'status');
-            el.style.cssText = 'margin-left:10px;font-size:12px;font-weight:600;cursor:default';
-            ref.insertAdjacentElement('afterend', el);
-            el.addEventListener('click', () => { if (this._falhas.length) { this._falhas = []; this._render(); } });
-            return el;
-        },
-
-        estado() {
-            const agora = Date.now();
-            const demorando = [...this._pendentes.values()].filter(p => agora - p.t0 >= this._ATRASO_AVISO_MS).length;
-            if (this._falhas.length) return { tipo: 'falha', n: this._falhas.length };
-            if (demorando)           return { tipo: 'pendente', n: this._pendentes.size };
-            return { tipo: 'ok', n: 0 };
-        },
-
-        _render() {
-            const el = this._el();
-            if (!el) return;
-            const e = this.estado();
-            if (e.tipo === 'falha') {
-                const sems = [...new Set(this._falhas.map(f => this._semaforoDe(f.desc)).filter(Boolean))];
-                el.textContent = `⚠️ ${sems.length ? 'Semáforo ' + sems.join(', ') : e.n + ' alteração(ões)'} não foi salvo pelo servidor. Avise o desenvolvedor. (clique para fechar)`;
-                el.title = this._falhas.map(f => `${f.desc}: ${f.msg}`).join('\n');
-                el.style.color = '#ef4444';
-            } else if (e.tipo === 'pendente') {
-                el.textContent = `⏳ ${e.n} alteração(ões) aguardando envio. Pode continuar trabalhando; não feche nem recarregue esta aba.`;
-                el.title = '';
-                el.style.color = '#f59e0b';
-                setTimeout(() => this._render(), 1000);
-            } else {
-                el.textContent = '✓ Tudo salvo';
-                el.title = '';
-                el.style.color = '#22c55e';
-            }
-        },
-
-        // Aviso do navegador ao fechar/recarregar com gravação pendente
-        _antesDeSair(ev) {
-            if (!NitGravacao._pendentes.size) return undefined;
-            ev.preventDefault();
-            ev.returnValue = 'Há alterações aguardando envio ao servidor.';
-            return ev.returnValue;
-        },
-
-        // ── Último relatório processado do dia (no próprio computador) ─────
-        guardarRelatorio(texto, dataRef) {
-            try {
-                localStorage.setItem(this._CHAVE_RELATORIO, JSON.stringify({ data: dataRef || '', ts: Date.now(), texto }));
-            } catch (e) { /* armazenamento indisponível: não bloqueia */ }
-        },
-
-        verificarRecuperacao() {
-            let salvo = null;
-            try { salvo = JSON.parse(localStorage.getItem(this._CHAVE_RELATORIO) || 'null'); } catch (e) { salvo = null; }
-            document.getElementById('nit-recuperar-relatorio')?.remove();
-            if (!salvo || !salvo.texto || salvo.data !== NitData.hoje()) return false;
-            const btn = document.getElementById('btn-processar');
-            if (!btn) return false;
-            const hora = new Date(salvo.ts).toTimeString().slice(0, 5);
-            const link = document.createElement('button');
-            link.type = 'button';
-            link.id = 'nit-recuperar-relatorio';
-            link.textContent = `↺ Recuperar último relatório processado (${hora})`;
-            link.style.cssText = 'margin-top:6px;width:100%;background:transparent;border:1px dashed #64748b;color:#cbd5e1;border-radius:6px;padding:4px;font-size:12px;cursor:pointer';
-            link.addEventListener('click', () => {
-                const ta = document.getElementById('relatorio-bruto-input');
-                if (ta) { ta.value = salvo.texto; ta.dispatchEvent(new Event('input', { bubbles: true })); }
-                showToast('Relatório recuperado. Confira e clique em PROCESSAR (não duplica cards).', 'info', 6000);
-            });
-            btn.insertAdjacentElement('afterend', link);
-            return true;
-        },
-
-        inicializar() {
-            window.addEventListener('beforeunload', this._antesDeSair);
-            this._render();
-            this.verificarRecuperacao();
-        },
-    };
-    window.NitGravacao = NitGravacao;
 
     // ── LOGIN ─────────────────────────────────────────────────────────────────
     const NitLogin = {
@@ -703,11 +578,9 @@ const NitData = {
     // Aceita tabs/espaços iniciais (formato CEMOB tab-separado: \tCAUSA\t*🚦...)
     const prefixMatch = linha.match(/^[\t\s]*([A-ZÀ-Ú][A-ZÀ-Ú\s]{1,30}?)\s*(?:\*\s*)?🚦/u);
     const prefixo = prefixMatch ? prefixMatch[1].trim().toUpperCase() : '';
-    // 13.1: causa como a fonte escreveu. A lista é só referência (e reserva quando não há prefixo).
     const TIPOS = ['FALHA DE EQUIPAMENTO','INVESTIGANDO','ROMPIMENTO','ACIDENTE',
-                   'IMPROCEDENTE','FURTO','ENEL','VANDALISMO','AGENTE DA NATUREZA',
-                   'MODERNIZAÇÃO','ABALROAMENTO','ACOMPANHAMENTO'];
-    const tipoFromPrefixo = TIPOS.find(t => prefixo.includes(t)) || (prefixo.length >= 3 ? prefixo : '');
+                   'IMPROCEDENTE','FURTO','ENEL','VANDALISMO','AGENTE DA NATUREZA'];
+    const tipoFromPrefixo = TIPOS.find(t => prefixo.includes(t));
 
     const re = /🚦[\s*]*([A-Z0-9]{1,8})[\s*]*🚦[\t ]*\*?(.*?)\*?[\t ]*●[\t ]*\*?([A-ZÀ-Ú][A-ZÀ-Ú\s/]+?)\*?[\t ]*●(.*)/isu;
     // Fallback: formato onde o código precede um único 🚦 (ex: planilha CEMOB copiada)
@@ -826,11 +699,6 @@ const NitData = {
                         el.dataset[k] = (dados[k] != null) ? dados[k] : '';
                     });
                     // 13.1: horários anteriores (aliases) e início anterior chegam ao outro operador
-                    // causa e problema podem chegar corrigidos por outro operador
-                    el.dataset.tipo     = dados.tipo     != null ? dados.tipo     : (el.dataset.tipo || '');
-                    el.dataset.problema = dados.problema != null ? dados.problema : (el.dataset.problema || '');
-                    const tagProblema = el.querySelector('.card-status-tag');
-                    if (tagProblema && dados.problema != null) tagProblema.textContent = dados.problema;
                     el.dataset.aliases        = JSON.stringify(dados.aliases || {});
                     el.dataset.inicioAnterior = dados.inicioAnterior != null ? dados.inicioAnterior : '';
                     // ✅ fix bug herança: dataReferencia não está na lista "campos" acima
@@ -912,7 +780,6 @@ const NitData = {
                         this._verificarIntegridadeProcessamento(eventos);
                         this.atualizarPainel();
                         NitProcessamento.registrar(texto, eventos, eventos[0]?.dataReferencia || '');
-                        NitGravacao.guardarRelatorio(texto, eventos[0]?.dataReferencia || '');
                     },
                     () => {
                         // Cancelado → processa sem os suspeitos
@@ -923,7 +790,6 @@ const NitData = {
                         this._verificarIntegridadeProcessamento(eventosFiltrados);
                         this.atualizarPainel();
                         NitProcessamento.registrar(texto, eventosFiltrados, eventosFiltrados[0]?.dataReferencia || '');
-                        NitGravacao.guardarRelatorio(texto, eventosFiltrados[0]?.dataReferencia || '');
                         showToast(`${suspeitos.length} código(s) suspeito(s) ignorado(s).`, 'info');
                     }
                 );
@@ -937,7 +803,6 @@ const NitData = {
             this.atualizarPainel();
             // ✅ Registra metadados do processamento para rastreabilidade e verificação de turno
             NitProcessamento.registrar(texto, eventos, eventos[0]?.dataReferencia || '');
-            NitGravacao.guardarRelatorio(texto, eventos[0]?.dataReferencia || '');
             DOM.relatorioBrutoInput.value = '';
         },
 
@@ -2022,18 +1887,6 @@ const NitData = {
                 let desde = '';
                 const mts = (card.dataset.inicio || '').match(/(\d{2})\/(\d{2})(?:\/\d+)?\s+(\d{2}:\d{2})/);
                 if (mts) desde = ` - Desde ${mts[1]}/${mts[2]} - ${mts[3]}`;
-                // 13.1: normalizado mostra início e fim (decisão de 16/10/2026).
-                // Mesmo dia: "16/10 07:14 às 10:46"; dias diferentes: "15/10 14:00 às 16/10 00:01".
-                if (card.closest('#coluna-normalizados')) {
-                    const fimTxt = `${card.dataset.data_fim || ''} ${card.dataset.hora_fim || ''}`.trim() || card.dataset.fim || '';
-                    const mf = fimTxt.match(/(\d{2})\/(\d{2})(?:\/\d+)?\s+(\d{2}:\d{2})/);
-                    if (mf && mts) {
-                        const mesmoDia = mf[1] === mts[1] && mf[2] === mts[2];
-                        desde = ` - ${mts[1]}/${mts[2]} ${mts[3]} às ${mesmoDia ? '' : mf[1] + '/' + mf[2] + ' '}${mf[3]}`;
-                    } else if (mf) {
-                        desde = ` - Normalizado ${mf[1]}/${mf[2]} - ${mf[3]}`;
-                    }
-                }
                 let t = `${card.dataset.codigo} 🚦 ${card.dataset.endereco} ● *${abrev}${desde} • ${card.dataset.problema}*`;
                 if (card.dataset.viatura) {
                     const via   = card.dataset.viatura;
@@ -2543,7 +2396,7 @@ const NitData = {
                 AppState.cardIdCounter = AppState.totalOcorrenciasCriadas = 0;
                 localStorage.removeItem(AppState.STORAGE_KEY_SEMAFORO);
                 NitFirebase.exec((db, ref, update) => {
-                    NitGravacao.rastrear(ref(db, 'kanban').remove(), 'remove kanban');
+                    ref(db, 'kanban').remove();
                     update(ref(db, 'meta'), {
                         ultimoReset: { ts: Date.now(), operador: NitLogin.operador || 'anon', turno: NitLogin.turno || '' },
                         dataReferencia: null,
@@ -2598,7 +2451,6 @@ const NitData = {
     document.body.setAttribute('data-theme', 'dark');
 
     await NitFirebase._init();
-    NitGravacao.inicializar();
     Semaforo.inicializar();
     switchTab('tab-semaforo');
 
