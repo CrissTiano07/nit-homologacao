@@ -703,9 +703,11 @@ const NitData = {
     // Aceita tabs/espaços iniciais (formato CEMOB tab-separado: \tCAUSA\t*🚦...)
     const prefixMatch = linha.match(/^[\t\s]*([A-ZÀ-Ú][A-ZÀ-Ú\s]{1,30}?)\s*(?:\*\s*)?🚦/u);
     const prefixo = prefixMatch ? prefixMatch[1].trim().toUpperCase() : '';
+    // 13.1: causa como a fonte escreveu. A lista é só referência (e reserva quando não há prefixo).
     const TIPOS = ['FALHA DE EQUIPAMENTO','INVESTIGANDO','ROMPIMENTO','ACIDENTE',
-                   'IMPROCEDENTE','FURTO','ENEL','VANDALISMO','AGENTE DA NATUREZA'];
-    const tipoFromPrefixo = TIPOS.find(t => prefixo.includes(t));
+                   'IMPROCEDENTE','FURTO','ENEL','VANDALISMO','AGENTE DA NATUREZA',
+                   'MODERNIZAÇÃO','ABALROAMENTO','ACOMPANHAMENTO'];
+    const tipoFromPrefixo = TIPOS.find(t => prefixo.includes(t)) || (prefixo.length >= 3 ? prefixo : '');
 
     const re = /🚦[\s*]*([A-Z0-9]{1,8})[\s*]*🚦[\t ]*\*?(.*?)\*?[\t ]*●[\t ]*\*?([A-ZÀ-Ú][A-ZÀ-Ú\s/]+?)\*?[\t ]*●(.*)/isu;
     // Fallback: formato onde o código precede um único 🚦 (ex: planilha CEMOB copiada)
@@ -824,6 +826,11 @@ const NitData = {
                         el.dataset[k] = (dados[k] != null) ? dados[k] : '';
                     });
                     // 13.1: horários anteriores (aliases) e início anterior chegam ao outro operador
+                    // causa e problema podem chegar corrigidos por outro operador
+                    el.dataset.tipo     = dados.tipo     != null ? dados.tipo     : (el.dataset.tipo || '');
+                    el.dataset.problema = dados.problema != null ? dados.problema : (el.dataset.problema || '');
+                    const tagProblema = el.querySelector('.card-status-tag');
+                    if (tagProblema && dados.problema != null) tagProblema.textContent = dados.problema;
                     el.dataset.aliases        = JSON.stringify(dados.aliases || {});
                     el.dataset.inicioAnterior = dados.inicioAnterior != null ? dados.inicioAnterior : '';
                     // ✅ fix bug herança: dataReferencia não está na lista "campos" acima
@@ -2015,6 +2022,18 @@ const NitData = {
                 let desde = '';
                 const mts = (card.dataset.inicio || '').match(/(\d{2})\/(\d{2})(?:\/\d+)?\s+(\d{2}:\d{2})/);
                 if (mts) desde = ` - Desde ${mts[1]}/${mts[2]} - ${mts[3]}`;
+                // 13.1: normalizado mostra início e fim (decisão de 16/10/2026).
+                // Mesmo dia: "16/10 07:14 às 10:46"; dias diferentes: "15/10 14:00 às 16/10 00:01".
+                if (card.closest('#coluna-normalizados')) {
+                    const fimTxt = `${card.dataset.data_fim || ''} ${card.dataset.hora_fim || ''}`.trim() || card.dataset.fim || '';
+                    const mf = fimTxt.match(/(\d{2})\/(\d{2})(?:\/\d+)?\s+(\d{2}:\d{2})/);
+                    if (mf && mts) {
+                        const mesmoDia = mf[1] === mts[1] && mf[2] === mts[2];
+                        desde = ` - ${mts[1]}/${mts[2]} ${mts[3]} às ${mesmoDia ? '' : mf[1] + '/' + mf[2] + ' '}${mf[3]}`;
+                    } else if (mf) {
+                        desde = ` - Normalizado ${mf[1]}/${mf[2]} - ${mf[3]}`;
+                    }
+                }
                 let t = `${card.dataset.codigo} 🚦 ${card.dataset.endereco} ● *${abrev}${desde} • ${card.dataset.problema}*`;
                 if (card.dataset.viatura) {
                     const via   = card.dataset.viatura;
