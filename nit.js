@@ -1667,8 +1667,15 @@ const NitData = {
                     pendenteFica = c; continue;
                 }
                 const abertas = [...livres].filter(l => !l.fechada);
+                // 13.2 (C1): linha SEM início nunca apaga o início que o card já tem.
+                // Só linhas sem início → o card fica como está (NIT-14 pergunta à fonte).
+                if (pend.length === 1 && c.atualId && abertas.length && abertas.every(l => !l.id)) {
+                    for (const x of abertas) { livres.delete(x); row(x, c.id, c.id, 'MANTER', 'linha sem início não apaga o início conhecido do card', 'REGISTRO', { motivo: 'SEM_INICIO' }); }
+                    pendenteFica = c; continue;
+                }
                 if (pend.length === 1 && abertas.length >= 1) {
-                    const [r, ...resto] = abertas;
+                    // com início primeiro: a correção de horário vem de linha que TEM início
+                    const [r, ...resto] = c.atualId ? [...abertas.filter(l => l.id), ...abertas.filter(l => !l.id)] : abertas;
                     livres.delete(r);
                     row(r, c.id, c.id, 'RETIFICAR', c.atualId ? `início do card (${c.inicio}) sumiu do relatório e o semáforo aparece com novo início: correção de horário` : 'card sem início recebe o início informado (enriquecimento)', 'REGISTRO', { inicioAnterior: c.inicio || '' });
                     for (const x of resto) { livres.delete(x); row(x, c.id, c.id, 'GUARDAR_NO_CARD', 'duas linhas abertas do mesmo semáforo: inconsistência da fonte', 'ALERTA'); }
