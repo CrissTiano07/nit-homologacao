@@ -388,7 +388,10 @@
                 if (i.linha2 && !chip) c.append(mk('div', 'nd-l2', i.linha2));
                 if (em) c.append(mk('div', 'nd-estado', `⏳ PERGUNTADO ${this._hhmm(em)}`));
                 const bs = mk('div', 'nd-botoes');
-                (i.botoes || []).forEach(([acao, texto]) => bs.append(btn(acao, texto)));
+                // NIT-11: se o semáforo já tem outra pendência, não oferece REABRIR (um semáforo, uma pendência)
+                const bots = (i.msg === 'NIT-11' && this._outroPendente(this._card(i.cardId) || document.createElement('div')))
+                    ? (i.botoes || []).filter(([a]) => a !== 'REABRIR') : (i.botoes || []);
+                bots.forEach(([acao, texto]) => bs.append(btn(acao, texto)));
                 if (i.pergunta) bs.append(btn('PERGUNTAR', '📋 PERGUNTAR', (i.botoes?.length || chip) ? 'nd-btn-peq' : ''));
                 if (bs.childNodes.length) c.append(bs);
                 return c;
@@ -472,8 +475,12 @@
             }
             if (i.msg === 'NIT-11' && el) {
                 if (acao === 'REABRIR') {
+                    if (this._outroPendente(el)) return;   // um semáforo, uma pendência
+                    // fim do card: data_fim/hora_fim; card que nasceu normalizado pode ter só "fim" no dataset
+                    const [fd = '', fh = ''] = (el.dataset.fim || '').trim().split(' ');
                     const antes = { coluna: 'coluna-normalizados', status: el.dataset.status || 'NORMALIZADO',
-                                    data_fim: el.dataset.data_fim || '', hora_fim: el.dataset.hora_fim || '', fim: el.dataset.fim || '', pl: el.dataset.pl || 'norm' };
+                                    data_fim: el.dataset.data_fim || fd, hora_fim: el.dataset.hora_fim || fh,
+                                    fim: '', pl: el.dataset.pl || 'norm' };   // o fim fica em data_fim/hora_fim (sem perder informação)
                     this._reabrir(el);
                     return this._confirmar(`✓ ${cod} REABRIU.`, () => this._desfazerReabrir(el, antes));
                 }
@@ -497,6 +504,10 @@
             }
         },
 
+        _outroPendente(el) {
+            return [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${el.dataset.codigo}"]`)]
+                .some(c => c !== el && !this._ehNorm(c));
+        },
         _reabrir(el) {
             Object.assign(el.dataset, { coluna: 'coluna-espera', status: 'PENDENTE', data_fim: '', hora_fim: '', fim: '', pl: '' });
             this._colocarNaColuna(el, 'coluna-espera');
@@ -508,7 +519,7 @@
         _desfazerReabrir(el, antes) {
             Object.assign(el.dataset, antes);
             this._colocarNaColuna(el, 'coluna-normalizados');
-            this._gravar(el.dataset.eventoid, { ...antes, ts_reaberto: null });
+            this._gravar(el.dataset.eventoid, { ...antes, fim: antes.fim || null, ts_reaberto: null });
             this._historico(el.dataset.eventoid, 'coluna-espera', 'coluna-normalizados');
             const body = el.querySelector('.card-body'); if (body) body.innerHTML = Semaforo._buildBodyHTML(el.dataset);
             Semaforo.atualizarPainel();
@@ -1190,6 +1201,8 @@ const NitData = {
                     el.dataset.aliases        = JSON.stringify(dados.aliases || {});
                     el.dataset.inicioAnterior = dados.inicioAnterior != null ? dados.inicioAnterior : '';
                     el.dataset.ts_retificacao = dados.ts_retificacao != null ? dados.ts_retificacao : '';
+                    el.dataset.fimAnterior = dados.fimAnterior != null ? dados.fimAnterior : '';
+                    el.dataset.ts_fim_corrigido = dados.ts_fim_corrigido != null ? dados.ts_fim_corrigido : '';
                     // 13.2: decisões, perguntas e retirado chegam ao outro operador
                     for (const k of ['decisoes', 'perguntas', 'retirado'])
                         el.dataset[k] = JSON.stringify(dados[k] && typeof dados[k] === 'object' ? dados[k] : {});
@@ -1817,12 +1830,23 @@ const NitData = {
             };
 
             const novos = new Map();   // 'novo:idx' → elemento criado
-            const st = { criados: 0, transicoes: 0, herdados: new Set(), retificados: [], registros: new Set(), conferir: new Set(), reinc: [], restaurados: [] };
+            const st = { criados: 0, transicoes: 0, herdados: new Set(), retificados: [], registros: new Set(), conferir: new Set(), reinc: [], restaurados: [], fimCorrigido: [] };
 
             // 1) criações primeiro (outras decisões podem apontar para o card novo)
             for (const r of linhas.filter(r => /^CRIAR_/.test(r.decisao))) {
                 const ev = eventos[r.idx];
                 const status = r.decisao === 'CRIAR_NORMALIZADO' ? 'NORMALIZADO' : this.statusFromSecao(ev.secao, ev);
+                // 13.2 (estresse): linha SEM início tem id "_SI" por dia; um card antigo pode ter nascido com esse
+                // mesmo id e depois ganhado início/fim. Se o id já é de OUTRA ocorrência, usa o próximo livre —
+                // senão a pendência nova se perderia em silêncio.
+                if (!(ev.inicio || '').trim()) {
+                    const ocupado = id => { const c = document.querySelector(`.kanban-card[data-eventoid="${id}"]`) || null;
+                        return (c && ((c.dataset.inicio || '').trim() || c.closest('#coluna-normalizados'))) || (lote && lotePayload[id]); };
+                    if (ocupado(ev.eventoId)) {
+                        let k = 2; while (ocupado(`${ev.eventoId}_${k}`) || cardDe(`${ev.eventoId}_${k}`)) k++;
+                        ev.eventoId = `${ev.eventoId}_${k}`;
+                    }
+                }
                 const dados = { ...ev, reincidente: r.decisao === 'CRIAR_PENDENTE_REINC' || !!r.reincidente };
                 if (cardDe(ev.eventoId)) continue; // já existe (ex.: outro operador gravou primeiro)
                 // 13.2: a fonte voltou a listar um card retirado → devolve o MESMO card (com equipe e histórico)
@@ -1873,6 +1897,26 @@ const NitData = {
                     case 'MANTER': {
                         if (r.motivo === 'ATIVIDADE_INCOMUM') break; // BR-NOR-007: só com decisão humana
                         const p = { ...(linhaEhAtual(el, ev) ? camposRelatorio(el, ev) : {}), ...heranca() };
+                        // 13.2: fim corrigido pela fonte em ocorrência já normalizada (mesmo início)
+                        if (!pendente && linhaEhAtual(el, ev) && this.statusFromSecao(ev.secao, ev) === 'NORMALIZADO') {
+                            const fimNovo = (ev.fim || '').trim();
+                            const fimAtual = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim() || (el.dataset.fim || '').trim();
+                            const tsIni = this._ts(el.dataset.inicio), tsFim = this._ts(fimNovo);
+                            // fim antes do início não é correção: fica como está e o NIT-13 avisa
+                            if (fimNovo && /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/.test(fimNovo) && fimNovo !== fimAtual && (tsIni == null || tsFim >= tsIni)) {
+                                const f = fimPartes(ev);
+                                Object.assign(p, f, { fimAnterior: fimAtual, ts_fim_corrigido: Date.now() });
+                                Object.assign(el.dataset, f, { fimAnterior: fimAtual, ts_fim_corrigido: String(p.ts_fim_corrigido), fim: '' });
+                                if (!lote) p.fim = null;
+                                const b = el.querySelector('.card-body'); if (b) b.innerHTML = this._buildBodyHTML(el.dataset);
+                                st.fimCorrigido.push(r.codigo);
+                            }
+                        }
+                        // 13.2: "MANTER NORMALIZADO" (NIT-11) vale enquanto a fonte insistir; voltou com fim → esquece
+                        if (!lote && !pendente && linhaEhAtual(el, ev) && this.statusFromSecao(ev.secao, ev) === 'NORMALIZADO') {
+                            let d = {}; try { d = JSON.parse(el.dataset.decisoes || '{}') || {}; } catch (e) { d = {}; }
+                            if (d['NIT-11']) { delete d['NIT-11']; el.dataset.decisoes = JSON.stringify(d); p['decisoes/NIT-11'] = null; }
+                        }
                         // 13.2: "MANTER" do NIT-10 vale enquanto o semáforo estiver fora do relatório
                         if (!lote && linhaEhAtual(el, ev)) {
                             let d = {}; try { d = JSON.parse(el.dataset.decisoes || '{}') || {}; } catch (e) { d = {}; }
@@ -2058,6 +2102,8 @@ const NitData = {
                     hora_fim:     cardData.hora_fim     || card.dataset.hora_fim     || '',
                     inicioAnterior: card.dataset.inicioAnterior || '',
                     ts_retificacao: card.dataset.ts_retificacao || '',
+                    fimAnterior:    card.dataset.fimAnterior || '',
+                    ts_fim_corrigido: card.dataset.ts_fim_corrigido || '',
                     fim:          cardData.fim          || card.dataset.fim
                                     // Deriva fim combinado de data_fim+hora_fim quando necessário
                                     || (cardData.data_fim ? `${cardData.data_fim}${cardData.hora_fim ? ' ' + cardData.hora_fim : ''}` : '')
@@ -2231,6 +2277,14 @@ const NitData = {
                 const [dA, hA] = iniAnt.split(' '), [dN, hN] = inicio.split(' ');
                 const curto = (dd, hh) => (dA === dN ? hh : `${(dd || '').slice(0, 5)} ${hh || ''}`.trim());
                 retifBlock = `<p class="card-retificado">⟲ início corrigido ${curto(dA, hA)} → ${curto(dN, hN)}</p>`;
+            }
+
+            // ── 13.2: fim corrigido pela fonte ──
+            const fimAnt = _sv(d.fimAnterior);
+            if (fimAnt && _sv(d.ts_fim_corrigido) && fimExib && fimAnt !== fimExib) {
+                const [dA, hA] = fimAnt.split(' '), [dN, hN] = fimExib.split(' ');
+                const curto = (dd, hh) => (dA === dN ? hh : `${(dd || '').slice(0, 5)} ${hh || ''}`.trim());
+                retifBlock += `<p class="card-retificado">⟲ fim corrigido ${curto(dA, hA)} → ${curto(dN, hN)}</p>`;
             }
 
             // ── Hierarquia do body ────────────────────────────────────────
