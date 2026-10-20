@@ -2101,3 +2101,13 @@
 .nit-diario-linha { font-size: 13px; margin-top: 2px; padding-left: 10px; }
 .nd-card.nd-azul { border-left-color: var(--color-info); background: color-mix(in srgb, var(--color-info) 12%, transparent); }
 .nd-l3 { font-weight: 700; }
+
+.card-manual { font-size: 11px; font-weight: 700; color: var(--color-warning); margin: 2px 0; }
+/* 20/10: coluna recolhida — seta e número no topo, nome logo abaixo, lido de cima para baixo (todas iguais) */
+.col-recolhivel.collapsed .kanban-column-header,
+#coluna-normalizados.collapsed .kanban-column-header { justify-content: flex-start !important; padding-top: 10px !important; }
+.col-recolhivel.collapsed .card-count { order: 1; }
+.col-recolhivel.collapsed .header-text { order: 2; writing-mode: vertical-rl; transform: none !important; }
+.col-recolhivel.collapsed .btn-toggle-col { order: 0; }
+#coluna-normalizados.collapsed .norm-collapsed-group { flex-direction: column-reverse !important; justify-content: flex-start; }
+#coluna-normalizados.collapsed .header-text { transform: none !important; writing-mode: vertical-rl; }
