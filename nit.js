@@ -406,7 +406,7 @@
             if (this._confirmacao) {
                 const c = mk('div', 'nd-confirmacao');
                 c.append(mk('span', 'nd-conf-txt', this._confirmacao.texto));
-                if (this._confirmacao.desfazer) c.append(btn('DESFAZER', 'DESFAZER', 'nd-btn-peq'));
+                if (this._confirmacao.desfazer) c.append(btn('DESFAZER', 'DESFAZER'));
                 painel.append(c);
             }
             const cardDe = i => {
@@ -423,8 +423,9 @@
                 // NIT-11: se o semáforo já tem outra pendência, não oferece REABRIR (um semáforo, uma pendência)
                 const bots = (i.msg === 'NIT-11' && this._outroPendente(this._card(i.cardId) || document.createElement('div')))
                     ? (i.botoes || []).filter(([a]) => a !== 'REABRIR') : (i.botoes || []);
-                bots.forEach(([acao, texto]) => bs.append(btn(acao, texto)));
-                if (i.pergunta) bs.append(btn('PERGUNTAR', '📋 PERGUNTAR', (i.botoes?.length || chip) ? 'nd-btn-peq' : ''));
+                // 3 níveis: respostas (contorno claro) · EXCLUIR (vermelho) · 📋 PERGUNTAR (texto, linha própria)
+                bots.forEach(([acao, texto]) => bs.append(btn(acao, texto, acao === 'TIRAR' ? 'nd-btn-perigo' : '')));
+                if (i.pergunta) bs.append(btn('PERGUNTAR', '📋 PERGUNTAR', chip ? 'nd-btn-peq' : (i.botoes?.length ? 'nd-btn-3' : '')));
                 if (bs.childNodes.length) c.append(bs);
                 return c;
             };
@@ -3941,7 +3942,7 @@ window.NitNormalizar = NitNormalizar;
             const cols = [...board.children].filter(c => c.classList.contains('kanban-column'));
             board.style.gridTemplateColumns = cols.map(c =>
                 c.classList.contains('collapsed') ? '36px'
-                : c.id === 'coluna-decidir' ? 'minmax(260px, 1.15fr)' : 'minmax(230px, 1fr)').join(' ');
+                : c.id === 'coluna-decidir' ? 'minmax(300px, 1.3fr)' : 'minmax(230px, 1fr)').join(' ');
         },
 
         inicializar() {
