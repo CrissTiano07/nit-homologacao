@@ -226,6 +226,7 @@
             try { registrarAcao(`13.2 ${id}: ${de} → ${para}`); } catch (e) { /* não bloqueia */ }
         },
         _porQuem() { return { ts: Date.now(), por: NitLogin.operador || 'anon' }; },
+        _registrarAcao(texto) { try { NitDiario.acao(texto); } catch (e) { /* não bloqueia */ } },
 
         // ── coluna do card (retirar / devolver) ──
         _colocarNaColuna(el, coluna) {
@@ -243,11 +244,14 @@
             Semaforo.atualizarPainel();
         },
         devolverCard(el) {
+            // o relatório (ou o outro operador) já devolveu o card: não há o que desfazer
+            if (el.parentElement !== this._retirados()) return false;
             el.dataset.retirado = '{}';
             this._colocarNaColuna(el);
             this._gravar(el.dataset.eventoid, { retirado: null });
             this._historico(el.dataset.eventoid, 'retirado', el.dataset.colunaAntes || el.dataset.coluna || '');
             Semaforo.atualizarPainel();
+            return true;
         },
         // sincronização (child_added / child_changed): marca vinda de outro operador
         sincronizarRetirado(el, dados) {
@@ -285,19 +289,41 @@
         // Chamado pela conferência logo após processar.
         definirItens(itens, { aposProcessar }) {
             if (aposProcessar) {
-                const antes = this._chavesVisiveis;
+                // o que estava aberto AGORA (estado atual dos cards), não o da última pintura da tela
+                const antes = new Set(this._visiveis().filter(i => i.nivel === 'ambar' || i.nivel === 'azul').map(i => i.chave));
                 this._itens = itens;
                 const agora = new Set(this._visiveis().map(i => i.chave));
                 const resolvidos = [...new Set([...antes].filter(c => !agora.has(c)).map(c => c.split('|')[1]))];
                 resolvidos.forEach(cod => showToast(`ℹ ${cod} RESOLVIDO.`, 'info', 8000));   // NIT-07
+                this._ultimosResolvidos = resolvidos;
                 // "RELATÓRIO ALTERADO!" só quando este relatório trouxe algo NOVO para decidir;
                 // pendências antigas sem resposta seguem com a linha NIT-22.
                 const ambar = new Set(this._visiveis().filter(i => i.nivel === 'ambar' && !this._perguntadoEm(i)).map(i => i.chave));
                 this._novos = [...ambar].filter(c => !antes.has(c)).length;
                 this._modoAlterado = this._novos > 0;
-                if (this._novos > 0) NitColunas.definir('coluna-decidir', false);   // chegou decisão nova: abre a coluna
+                if (this._novos > 0) { NitColunas._decidirManual = null; NitColunas.definir('coluna-decidir', false, { auto: true }); }   // decisão nova: abre a coluna
             } else this._itens = itens;
             this.render();
+            if (aposProcessar) this._publicarItens();
+        },
+
+        // ── 13.2: a coluna ⚠ DECIDIR é a mesma nas duas janelas (lista gravada no banco) ──
+        _publicarItens() {
+            this._tsItens = Date.now();
+            const dados = { ts: this._tsItens, por: NitLogin.operador || 'anon', data: NitData.hoje(), itens: JSON.stringify(this._itens) };
+            NitFirebase.exec((db, ref, update) => update(ref(db, 'meta'), { decisoes_ativas: dados }));
+        },
+        ouvirItensCompartilhados(tentativa = 0) {
+            const db = NitFirebase.db;
+            if (!db) { if (tentativa < 50) setTimeout(() => this.ouvirItensCompartilhados(tentativa + 1), 200); return; }
+            db.ref('meta/decisoes_ativas').on('value', snap => {
+                const v = snap.val();
+                if (!v || !v.itens || v.data !== NitData.hoje() || (this._tsItens && v.ts <= this._tsItens)) return;
+                try { this._itens = JSON.parse(v.itens) || []; } catch (e) { return; }
+                this._tsItens = v.ts;
+                this._modoAlterado = false;   // a novidade foi do outro operador; aqui vale a linha "esperam sua resposta"
+                this.render();
+            });
         },
 
         // filtro pelo estado atual dos cards
@@ -320,6 +346,9 @@
             const el = this._card(i.cardId);
             return i.pergunta ? this._json(el, 'perguntas')[i.sig] || null : null;
         },
+        esperandoFonte() {   // decisões abertas que mudam o relatório de saída (âmbar)
+            return [...new Set(this._visiveis().filter(i => i.nivel === 'ambar' && i.cardId).map(i => i.codigo))];
+        },
         aguardandoOperador() { return this._visiveis().filter(i => i.nivel === 'ambar' && !this._perguntadoEm(i)).length; },
 
         agendar() {
@@ -331,7 +360,7 @@
             const tab = document.querySelector('#tab-semaforo');
             if (!tab) return;
             const itens = this._visiveis();
-            this._chavesVisiveis = new Set(itens.filter(i => i.nivel === 'ambar').map(i => i.chave));
+            this._chavesVisiveis = new Set(itens.filter(i => i.nivel === 'ambar' || i.nivel === 'azul').map(i => i.chave));
             let painel = document.getElementById('nit-integridade-processamento');
             if (!itens.length && !this._confirmacao) { painel?.remove(); this._coluna(false); return; }
             if (!painel) {
@@ -386,6 +415,8 @@
                 c.dataset.msg = i.msg; c.dataset.codigo = i.codigo; c.dataset.chave = i.chave;
                 c.append(mk('div', 'nd-t', i.titulo));
                 if (i.linha2 && !chip) c.append(mk('div', 'nd-l2', i.linha2));
+                const outra = !chip && this._outraPendencia(i);
+                if (outra) c.append(mk('div', 'nd-l2 nd-l3', `Já existe outra pendência do ${i.codigo}, a das ${this._horaCurta(outra.dataset.inicio)}. Por isso não dá para reabrir esta.`));
                 if (em) c.append(mk('div', 'nd-estado', `⏳ PERGUNTADO ${this._hhmm(em)}`));
                 const bs = mk('div', 'nd-botoes');
                 // NIT-11: se o semáforo já tem outra pendência, não oferece REABRIR (um semáforo, uma pendência)
@@ -397,6 +428,13 @@
                 return c;
             };
             if (ativos.length) { const g = mk('div', 'nd-grade'); ativos.forEach(i => g.append(cardDe(i))); painel.append(g); }
+            // só sobrou "esperando a fonte" → a coluna vira a faixa fina (o número continua no cabeçalho)
+            const soEspera = !ativos.length && !this._confirmacao && esperando.length;
+            const col = document.getElementById('coluna-decidir');
+            if (col && NitColunas._decidirManual !== 'aberta') {
+                if (soEspera && !col.classList.contains('collapsed')) NitColunas.definir('coluna-decidir', true, { auto: true });
+                if (!soEspera && col.classList.contains('collapsed') && NitColunas._decidirManual !== 'fechada') NitColunas.definir('coluna-decidir', false, { auto: true });
+            }
             if (esperando.length) {
                 const e = mk('div', 'nd-espera');
                 e.append(mk('span', 'nd-espera-rot', '⏳ ESPERANDO A FONTE'));
@@ -439,7 +477,8 @@
 
         _perguntar(itens) {
             if (!itens.length) return;
-            this._copiar(itens.map(i => i.pergunta).join('\n'));
+            this._copiar(itens.map(i => this._perguntaDe(i)).join('\n'));
+            this._registrarAcao(`📋 perguntou à fonte: ${itens.map(i => i.codigo).join(', ')}`);
             const ts = Date.now();
             for (const i of itens) {
                 const el = this._card(i.cardId);
@@ -464,13 +503,23 @@
             const cod = i.codigo;
             const el = this._card(i.cardId);
             if (i.msg === 'NIT-10' && el) {
+                // 13.2 (homologação 19/10): botões pelo ESTADO DO SEMÁFORO, não pelo card
                 if (acao === 'TIRAR') {
                     this.retirarCard(el, 'NIT-10');
-                    return this._confirmar(`✓ ${cod} SAIU DO PAINEL.`, () => this.devolverCard(el));
+                    this._registrarAcao(`${cod} EXCLUÍDO DO PAINEL`);
+                    return this._confirmar(`✓ ${cod} EXCLUÍDO DO PAINEL.`, () => { const ok = this.devolverCard(el); if (ok) this._registrarAcao(`↩ DESFEITO: ${cod} voltou ao painel`); return ok; });
                 }
                 if (acao === 'MANTER') {
+                    const norm = this._ehNorm(el);
                     this._marcarDecisao(el, 'NIT-10', { r: 'MANTER', ...this._porQuem() });
-                    return this._confirmar(`✓ ${cod} FICOU NO PAINEL.`, () => this._marcarDecisao(el, 'NIT-10', null));
+                    this._registrarAcao(`${cod} CONTINUA ${norm ? 'NORMALIZADO' : 'PENDENTE'} (não veio no relatório)`);
+                    return this._confirmar(`✓ ${cod} CONTINUA ${norm ? 'NORMALIZADO' : 'PENDENTE'}.`, () => { this._marcarDecisao(el, 'NIT-10', null); this._registrarAcao(`↩ DESFEITO: ${cod}`); });
+                }
+                if (acao === 'NORMALIZOU') {
+                    // a janela de normalizar que já existe: o operador informa o fim (o NIT não inventa horário)
+                    this._normalizandoNit10 = el.dataset.eventoid;
+                    if (typeof NitNormalizar !== 'undefined') NitNormalizar.abrir(el);
+                    return;
                 }
             }
             if (i.msg === 'NIT-11' && el) {
@@ -482,11 +531,13 @@
                                     data_fim: el.dataset.data_fim || fd, hora_fim: el.dataset.hora_fim || fh,
                                     fim: '', pl: el.dataset.pl || 'norm' };   // o fim fica em data_fim/hora_fim (sem perder informação)
                     this._reabrir(el);
-                    return this._confirmar(`✓ ${cod} REABRIU.`, () => this._desfazerReabrir(el, antes));
+                    this._registrarAcao(`${cod} REABRIU (voltou atrás na normalização)`);
+                    return this._confirmar(`✓ ${cod} REABRIU.`, () => { const ok = this._desfazerReabrir(el, antes); if (ok) this._registrarAcao(`↩ DESFEITO: ${cod} normalizado de novo`); return ok; });
                 }
                 if (acao === 'MANTER_NORM') {
                     this._marcarDecisao(el, 'NIT-11', { r: 'MANTER', ...this._porQuem() });
-                    return this._confirmar(`✓ ${cod} FICOU NORMALIZADO.`, () => this._marcarDecisao(el, 'NIT-11', null));
+                    this._registrarAcao(`${cod} FICOU NORMALIZADO (fonte disse pendente)`);
+                    return this._confirmar(`✓ ${cod} FICOU NORMALIZADO.`, () => { this._marcarDecisao(el, 'NIT-11', null); this._registrarAcao(`↩ DESFEITO: ${cod}`); });
                 }
             }
             if (i.msg === 'NIT-16') {
@@ -495,13 +546,56 @@
                     const velho = this._card(i.maisAntigo);
                     if (!velho) return;
                     this.retirarCard(velho, 'NIT-16');
-                    return this._confirmar(`✓ ${cod} DE ${i.horaAntigo} SAIU DO PAINEL.`, () => this.devolverCard(velho));
+                    this._registrarAcao(`${cod} DE ${i.horaAntigo} EXCLUÍDO DO PAINEL`);
+                    return this._confirmar(`✓ ${cod} DE ${i.horaAntigo} EXCLUÍDO DO PAINEL.`, () => { const ok = this.devolverCard(velho); if (ok) this._registrarAcao(`↩ DESFEITO: ${cod} de ${i.horaAntigo} voltou`); return ok; });
                 }
                 if (acao === 'MANTER') {
+                    this._registrarAcao(`${cod} ficou com os 2 cards`);
                     cs.forEach(c => this._marcarDecisao(c, 'NIT-16', { r: 'MANTER', ...this._porQuem() }));
                     return this._confirmar(`✓ ${cod} FICOU NO PAINEL.`, () => cs.forEach(c => this._marcarDecisao(c, 'NIT-16', null)));
                 }
             }
+        },
+
+        // EXCLUIR não apaga na hora (DESFAZER, auditoria, gravação atrasada de outro operador).
+        // No dia seguinte, o que foi excluído ontem ou antes é apagado de vez.
+        limparExcluidosAntigos() {
+            const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+            const velhos = [...this._retirados().querySelectorAll('.kanban-card')].filter(el => {
+                const m = this._json(el, 'retirado'); return m.ts && m.ts < hoje0.getTime();
+            });
+            for (const el of velhos) {
+                const id = el.dataset.eventoid;
+                NitFirebase.exec((db, ref) => NitGravacao.rastrear(ref(db, `kanban/${id}`).remove(), `remove kanban/${id}`));
+                el.remove();
+            }
+            if (velhos.length) this._registrarAcao(`🧹 apagados de vez ${velhos.length} card(s) excluído(s) em dias anteriores: ${velhos.map(e => e.dataset.codigo).join(', ')}`);
+        },
+
+        // chamado quando a normalização manual (janela de normalizar) é gravada
+        normalizadoManual(card, dataFim, horaFim) {
+            const id = card.dataset.eventoid;
+            this._gravar(id, { normManual: { ...this._porQuem(), fim: `${dataFim} ${horaFim}` } });
+            this._registrarAcao(`${card.dataset.codigo} normalizado à mão às ${horaFim}`);
+            if (this._normalizandoNit10 === id) {
+                this._normalizandoNit10 = null;
+                this._marcarDecisao(card, 'NIT-10', { r: 'NORMALIZOU', ...this._porQuem() });
+                this._confirmar(`✓ ${card.dataset.codigo} NORMALIZADO ÀS ${horaFim}.`, null);
+            } else this.agendar();
+        },
+
+        // pergunta do NIT-11 muda quando já existe outra pendência do semáforo
+        _outraPendencia(i) {
+            const el = this._card(i.cardId);
+            if (i.msg !== 'NIT-11' || !el) return null;
+            return [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${el.dataset.codigo}"]`)]
+                .find(c => c !== el && !this._ehNorm(c)) || null;
+        },
+        _horaCurta(s) { const [d = '', h = ''] = String(s || '').split(' '); return d === NitData.hoje() ? h : `${d.slice(0, 5)} ${h}`.trim(); },
+        _perguntaDe(i) {
+            const outra = this._outraPendencia(i);
+            if (!outra) return i.pergunta;
+            return `O ${i.codigo} aparece pendente às ${i.ini} e às ${this._horaCurta(outra.dataset.inicio)}. A das ${i.ini} não normalizou às ${i.fim}?`;
         },
 
         _outroPendente(el) {
@@ -517,24 +611,111 @@
             Semaforo.atualizarPainel();
         },
         _desfazerReabrir(el, antes) {
+            if (this._ehNorm(el)) return false;   // já normalizou de novo (relatório/outro operador): não sobrescreve o fim novo
             Object.assign(el.dataset, antes);
             this._colocarNaColuna(el, 'coluna-normalizados');
             this._gravar(el.dataset.eventoid, { ...antes, fim: antes.fim || null, ts_reaberto: null });
             this._historico(el.dataset.eventoid, 'coluna-espera', 'coluna-normalizados');
             const body = el.querySelector('.card-body'); if (body) body.innerHTML = Semaforo._buildBodyHTML(el.dataset);
             Semaforo.atualizarPainel();
+            return true;
         },
 
         _desfazer() {
             const c = this._confirmacao;
             if (!c?.desfazer) return;
-            c.desfazer();
+            const feito = c.desfazer();
             const cod = (/^✓ (\S+)/.exec(c.texto) || [])[1] || '';
-            this._confirmacao = { texto: `↩ DESFEITO. ${cod} VOLTOU. Agora: ${this.textoTotais()}`, desfazer: null };  // NIT-21
+            this._confirmacao = feito === false
+                ? { texto: `ℹ ${cod} JÁ FOI ATUALIZADO PELO RELATÓRIO. Nada a desfazer. Agora: ${this.textoTotais()}`, desfazer: null }
+                : { texto: `↩ DESFEITO. ${cod} VOLTOU. Agora: ${this.textoTotais()}`, desfazer: null };  // NIT-21
             this.render();
         },
     };
     window.NitDecisoes = NitDecisoes;
+
+    // ── 📜 O QUE MUDOU: diário consultável do dia (13.2, pedido da homologação 19/10) ──
+    // Cada processamento e cada decisão do operador viram uma entrada em auditoria/{ddmmaaaa}.
+    // Os avisos ℹ somem em segundos; aqui fica o registro para consultar quando quiser.
+    const NitDiario = {
+        _dia() { return NitData.hoje().replace(/\D/g, ''); },
+        _hhmm(ts) { const d = new Date(ts); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; },
+        _gravar(entrada) {
+            const e = { ts: Date.now(), por: NitLogin.operador || 'anon', ...entrada };
+            NitFirebase.exec((db, ref, update, push) => push(ref(db, `auditoria/${this._dia()}`), e));
+        },
+        acao(texto) { this._gravar({ tipo: 'acao', linhas: [texto] }); },
+        processamento({ totais, aplic, itensNovos, resolvidos }) {
+            const L = [];
+            const j = xs => [...new Set(xs || [])].join(', ');
+            if (aplic.novosPend?.length) L.push(`＋ Novos pendentes: ${j(aplic.novosPend)}`);
+            if (aplic.novosNorm?.length) L.push(`＋ Novos já normalizados: ${j(aplic.novosNorm)}`);
+            if (aplic.normCod?.length)   L.push(`✓ Normalizaram: ${j(aplic.normCod)}`);
+            if (aplic.reinc?.length)     L.push(`↺ Apagaram de novo: ${j(aplic.reinc)}`);
+            if (aplic.retificados?.length) L.push(`⟲ Início corrigido pela fonte: ${aplic.retificados.join(' · ')}`);
+            if (aplic.fimCorrigido?.length) L.push(`⟲ Fim corrigido pela fonte: ${aplic.fimCorrigido.join(' · ')}`);
+            if (aplic.restaurados?.length) L.push(`↩ Voltaram ao painel (a fonte listou de novo): ${j(aplic.restaurados)}`);
+            if (aplic.herdados)          L.push(`↪ Pendências de ontem que continuam hoje: ${aplic.herdados}`);
+            if (itensNovos?.length)      L.push(`⚠ Erros da fonte: ${itensNovos.join(' · ')}`);
+            if (resolvidos?.length)      L.push(`ℹ Resolvidos: ${j(resolvidos)}`);
+            if (!L.length) L.push('Nada mudou.');
+            this._gravar({ tipo: 'processamento', totais, linhas: L });
+        },
+
+        // ── tela ──
+        _botao() {
+            if (document.getElementById('nit-diario-btn')) return;
+            const ref = document.getElementById('nit-gravacao-status') || document.getElementById('nit-firebase-status');
+            if (!ref) return;
+            const b = document.createElement('button');
+            b.id = 'nit-diario-btn'; b.type = 'button'; b.className = 'nd-btn nd-btn-peq nit-diario-btn';
+            b.textContent = '📜 O QUE MUDOU';
+            b.title = 'O que aconteceu hoje: relatórios processados, correções da fonte e decisões';
+            b.addEventListener('click', () => this.abrir());
+            ref.insertAdjacentElement('afterend', b);
+        },
+        abrir() {
+            let ov = document.getElementById('nit-diario');
+            if (!ov) {
+                ov = document.createElement('div');
+                ov.id = 'nit-diario'; ov.className = 'nit-diario-overlay';
+                ov.innerHTML = `<div class="nit-diario-caixa" role="dialog" aria-label="O que mudou hoje">
+                    <div class="nit-diario-topo"><strong>📜 O QUE MUDOU HOJE</strong>
+                    <button type="button" class="nd-btn nd-btn-peq" data-fechar>FECHAR</button></div>
+                    <div class="nit-diario-lista">Carregando…</div></div>`;
+                document.body.appendChild(ov);
+                ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-fechar]')) this.fechar(); });
+            }
+            ov.classList.add('visivel');
+            const db = NitFirebase.db;
+            if (!db) { ov.querySelector('.nit-diario-lista').textContent = 'Sem conexão com o banco.'; return; }
+            this._ref = db.ref(`auditoria/${this._dia()}`);
+            this._cb = this._ref.on('value', snap => this._mostrar(snap.val() || {}));
+        },
+        fechar() {
+            document.getElementById('nit-diario')?.classList.remove('visivel');
+            if (this._ref && this._cb) this._ref.off('value', this._cb);
+        },
+        _mostrar(obj) {
+            const lista = document.querySelector('#nit-diario .nit-diario-lista');
+            if (!lista) return;
+            const es = Object.values(obj).filter(e => e && e.ts).sort((a, b) => b.ts - a.ts);
+            lista.replaceChildren();
+            if (!es.length) { lista.textContent = 'Nada registrado hoje.'; return; }
+            for (const e of es) {
+                const d = document.createElement('div');
+                d.className = `nit-diario-item nit-diario-${e.tipo}`;
+                const cab = document.createElement('div');
+                cab.className = 'nit-diario-cab';
+                cab.textContent = `${this._hhmm(e.ts)} · ${e.por}` + (e.tipo === 'processamento' ? ` processou o relatório · ${e.totais || ''}` : '');
+                d.append(cab);
+                for (const l of e.linhas || []) { const p = document.createElement('div'); p.className = 'nit-diario-linha'; p.textContent = l; d.append(p); }
+                lista.append(d);
+            }
+        },
+        inicializar() { this._botao(); },
+    };
+    window.NitDiario = NitDiario;
 
     // ── LOGIN ─────────────────────────────────────────────────────────────────
     const NitLogin = {
@@ -1251,6 +1432,7 @@ const NitData = {
             if (!eventos.length) { showToast(NIT03, 'error', 8000); return; }
             this._horaRelatorio = NitDecisoes._hhmm(Date.now());
             NitDecisoes.novoProcessamento();
+            try { NitDecisoes.limparExcluidosAntigos(); } catch (e) { /* não bloqueia */ }
 
             // ── Guarda de data do plantão ──
             // A data do cabeçalho vira dataReferencia de todo o lote; uma data errada
@@ -1424,14 +1606,14 @@ const NitData = {
                     const fim = hm(`${card.dataset.data_fim || ''} ${card.dataset.hora_fim || ''}`.trim() || card.dataset.fim);
                     add({ msg: 'NIT-10', nivel: 'ambar', codigo: cod, cardId: id, chave: `NIT-10|${cod}|${id}`, sigBase: `NIT-10|${id}|N`,
                         titulo: `⚠ ${cod} NÃO VEIO NO RELATÓRIO`, linha2: `Normalizou às ${fim}. Sumiu no relatório das ${hora}.`,
-                        botoes: [['MANTER', 'MANTER'], ['TIRAR', 'TIRAR']],
+                        botoes: [['MANTER', 'NORMALIZADO'], ['TIRAR', 'EXCLUIR']],
                         pergunta: `O ${cod} (normalizado às ${fim}) não veio no relatório das ${hora}. Ainda vale?` });
                 } else {
                     const ini = hm(card.dataset.inicio);
                     add({ msg: 'NIT-10', nivel: 'ambar', codigo: cod, cardId: id, chave: `NIT-10|${cod}|${id}`, sigBase: `NIT-10|${id}|${ini}`,
                         titulo: `⚠ ${cod} NÃO VEIO NO RELATÓRIO`,
                         linha2: ini ? `Pendente desde ${ini}. Sumiu no relatório das ${hora}.` : `Pendente sem hora de início. Sumiu no relatório das ${hora}.`,
-                        botoes: [['MANTER', 'MANTER'], ['TIRAR', 'TIRAR']],
+                        botoes: [['MANTER', 'PENDENTE'], ['NORMALIZOU', 'NORMALIZOU'], ['TIRAR', 'EXCLUIR']],
                         pergunta: `O ${cod} (pendente desde ${ini || 'hora não informada'}) não veio no relatório das ${hora}. Normalizou?` });
                 }
             }
@@ -1439,8 +1621,10 @@ const NitData = {
             for (const { ev, card } of r.estado) {
                 if (!card) continue;
                 const fim = hm(`${card.dataset.data_fim || ''} ${card.dataset.hora_fim || ''}`.trim() || card.dataset.fim);
-                add({ msg: 'NIT-11', nivel: 'ambar', codigo: ev.codigo, cardId: card.dataset.eventoid, chave: `NIT-11|${ev.codigo}|${card.dataset.eventoid}`,
-                    titulo: `⚠ ${ev.codigo} VOLTOU PARA PENDENTE`, linha2: `Normalizou às ${fim}. Agora veio pendente.`,
+                const iniC = hm(card.dataset.inicio);
+                add({ msg: 'NIT-11', nivel: 'ambar', codigo: ev.codigo, cardId: card.dataset.eventoid, chave: `NIT-11|${ev.codigo}|${card.dataset.eventoid}`, ini: iniC, fim,
+                    titulo: `⚠ ${ev.codigo} VOLTOU ATRÁS`,
+                    linha2: `Mesma ocorrência (início ${iniC}). Normalizou às ${fim} e agora veio de novo como pendente. Não é uma nova falha.`,
                     botoes: [['REABRIR', 'REABRIR'], ['MANTER_NORM', 'MANTER NORMALIZADO']],
                     pergunta: `O ${ev.codigo} normalizou às ${fim} e voltou como pendente. Apagou de novo?` });
             }
@@ -1452,17 +1636,21 @@ const NitData = {
                     maisAntigo: cs[0].dataset.eventoid, horaAntigo: hs[0], chave: `NIT-16|${codigo}`,
                     titulo: `⚠ ${codigo} TEM ${cs.length} CARDS`,
                     linha2: cs.length === 2 ? `Um de ${hs[0]} e outro de ${hs[1]}.` : `Cards de ${D._lista(hs)}.`,
-                    botoes: [['TIRAR', `TIRAR O DE ${hs[0]}`], ['MANTER', 'MANTER']] });
+                    botoes: [['TIRAR', `EXCLUIR O DE ${hs[0]}`], ['MANTER', 'MANTER OS 2']] });
             }
             // NIT-12: o mesmo semáforo veio aberto mais de uma vez
             for (const { ev } of r.duasAbertas) {
                 const cod = ev.codigo;
                 const hs = linhasDe(cod).filter(e => !fechada(e)).map(e => hm(e.inicio) || 'sem hora');
                 if (hs.length < 2) continue;
-                add({ msg: 'NIT-12', nivel: 'ambar', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-12|${cod}`,
-                    titulo: `⚠ ${cod} VEIO ${hs.length} VEZES`,
-                    linha2: `Pendente ${hs.map(x => `às ${x}`).reduce((a, x, i, arr) => a + (i === 0 ? x : i === arr.length - 1 ? ` e ${x}` : `, ${x}`), '')}.`,
-                    pergunta: `O ${cod} veio ${hs.length} vezes como pendente (${D._lista(hs)}). Qual vale?` });
+                // 13.2 (homologação 19/10): só para saber — o NIT já ficou com um horário e não perde nada
+                const fica = hm(document.querySelector(`#tab-semaforo .kanban-card[data-eventoid="${cardDoCodigo(cod)}"]`)?.dataset.inicio) || hs[0];
+                add({ msg: 'NIT-12', nivel: 'azul', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-12|${cod}`,
+                    titulo: `ℹ ${cod} VEIO ${hs.length} VEZES`,
+                    linha2: `Pendente ${hs.map(x => `às ${x}`).reduce((a, x, i, arr) => a + (i === 0 ? x : i === arr.length - 1 ? ` e ${x}` : `, ${x}`), '')}. Nada a fazer: o NIT ficou com ${fica}. Some quando a fonte corrigir.`,
+                    pergunta: hs.length === 2
+                        ? `O ${cod} aparece 2 vezes como pendente (${hs[0]} e ${hs[1]}). O início certo é ${hs[0]} ou ${hs[1]}?`
+                        : `O ${cod} aparece ${hs.length} vezes como pendente (${D._lista(hs)}). Qual é o início certo?` });
             }
             // NIT-13: horários que não fecham (fim antes do início, sobreposição, dados insuficientes)
             const naoFecha = new Set(r.sequencia.map(({ ev }) => ev.codigo));
@@ -1487,6 +1675,13 @@ const NitData = {
                 const n = [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${cod}"]`)].filter(c => c.dataset.datareferencia === dataRel).length;
                 showToast(`ℹ ${cod} APAGOU DE NOVO. ${n}ª vez hoje.`, 'info', 8000);
             }
+            // 📜 diário do processamento
+            try {
+                const nomes = { 'NIT-10': 'não veio', 'NIT-11': 'voltou atrás', 'NIT-12': 'veio 2 vezes', 'NIT-13': 'horário não fecha', 'NIT-14': 'sem hora de início', 'NIT-16': 'tem 2 cards', 'NIT-35': 'não entrou no painel' };
+                const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${nomes[i.msg]}`);
+                NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [] });
+            } catch (e) { /* não bloqueia */ }
+
             // NIT-01: nada esperando o operador e nada fora do normal
             const bloqueia = itens.some(i => i.msg === 'NIT-35' || i.msg === 'NIT-02');
             if (!D._novos && !bloqueia) showToast(`✓ PRONTO · ${D.textoTotais()}`, 'success', 6000);
@@ -1837,7 +2032,7 @@ const NitData = {
             };
 
             const novos = new Map();   // 'novo:idx' → elemento criado
-            const st = { criados: 0, transicoes: 0, herdados: new Set(), retificados: [], registros: new Set(), conferir: new Set(), reinc: [], restaurados: [], fimCorrigido: [] };
+            const st = { criados: 0, transicoes: 0, herdados: new Set(), retificados: [], registros: new Set(), conferir: new Set(), reinc: [], restaurados: [], fimCorrigido: [], novosPend: [], novosNorm: [], normCod: [] };
 
             // 1) criações primeiro (outras decisões podem apontar para o card novo)
             for (const r of linhas.filter(r => /^CRIAR_/.test(r.decisao))) {
@@ -1879,6 +2074,7 @@ const NitData = {
                 else NitFirebase.exec((db, ref, update) => update(ref(db, `kanban/${ev.eventoId}`), this._payloadFirebase(dados, status)));
                 novos.set(`novo:${r.idx}`, el);
                 st.criados++;
+                (status === 'NORMALIZADO' ? st.novosNorm : st.novosPend).push(ev.codigo);
             }
 
             // 2) demais decisões sobre cards existentes (ou recém-criados)
@@ -1916,7 +2112,7 @@ const NitData = {
                                 Object.assign(el.dataset, f, { fimAnterior: fimAtual, ts_fim_corrigido: String(p.ts_fim_corrigido), fim: '' });
                                 if (!lote) p.fim = null;
                                 const b = el.querySelector('.card-body'); if (b) b.innerHTML = this._buildBodyHTML(el.dataset);
-                                st.fimCorrigido.push(r.codigo);
+                                st.fimCorrigido.push(`${r.codigo} (${(fimAtual.split(' ')[1] || fimAtual)} → ${f.hora_fim})`);
                             }
                         }
                         // 13.2: "MANTER NORMALIZADO" (NIT-11) vale enquanto a fonte insistir; voltou com fim → esquece
@@ -1946,7 +2142,7 @@ const NitData = {
                             if (lote) extra.aliases = a; else extra[`aliases/${r.liberaId}`] = null;
                         }
                         normalizar(el, ev, { ...camposRelatorio(el, ev), ...extra });
-                        st.transicoes++;
+                        st.transicoes++; st.normCod.push(r.codigo);
                         break;
                     }
                     case 'RETIFICAR':
@@ -1958,7 +2154,7 @@ const NitData = {
                         el.dataset.ts_retificacao = String(patch.ts_retificacao);
                         st.retificados.push(`${r.codigo} (${(de.split(' ')[1] || de || 'sem início')} → ${(ev.inicio || '').split(' ')[1] || ev.inicio})`);
                         if (r.decisao === 'RETIFICAR') gravar(id, { ...patch, ...camposRelatorio(el, ev), ...heranca() });
-                        else { normalizar(el, ev, { ...patch, ...camposRelatorio(el, ev) }); st.transicoes++; }
+                        else { normalizar(el, ev, { ...patch, ...camposRelatorio(el, ev) }); st.transicoes++; st.normCod.push(r.codigo); }
                         break;
                     }
                     case 'GUARDAR_NO_CARD': {
@@ -1992,7 +2188,9 @@ const NitData = {
             }
 
             // 13.2: um único resumo ao operador, dado pela conferência (NIT-01/04/06).
-            this._ultimaAplicacao = { retificados: st.retificados.slice(), reinc: st.reinc.slice() };
+            this._ultimaAplicacao = { retificados: st.retificados.slice(), reinc: st.reinc.slice(), fimCorrigido: st.fimCorrigido.slice(),
+                                      novosPend: st.novosPend.slice(), novosNorm: st.novosNorm.slice(), normCod: st.normCod.slice(),
+                                      restaurados: st.restaurados.slice(), herdados: st.herdados.size };
             return { linhas, ...st };
         },
 
@@ -2393,6 +2591,7 @@ const NitData = {
             });
 
             this.gerarPreviewRelatorio();
+            if (typeof NitColunas !== 'undefined') NitColunas.automatico({ 'coluna-vl': total.vl, 'coluna-amc': total.amc, 'coluna-sem-necessidade': total.semNecessidade });
         },
 
         gerarPreviewRelatorio() {
@@ -2996,8 +3195,14 @@ const NitData = {
         }
         
         DOM.btnVisualizarRelatorio.addEventListener('click', function() {
-            DOM.modalRelatorioTexto.value = this.gerarPreviewRelatorio();
-            abrirModal(DOM.modalRelatorio);
+            const abrirRel = () => { DOM.modalRelatorioTexto.value = this.gerarPreviewRelatorio(); abrirModal(DOM.modalRelatorio); };
+            // 13.2: decisão aberta → só um lembrete na tela (o relatório sai igual; nada é marcado nele)
+            const abertos = (typeof NitDecisoes !== 'undefined') ? NitDecisoes.esperandoFonte() : [];
+            if (!abertos.length) return abrirRel();
+            const lista = abertos.length === 1 ? abertos[0] : `${abertos.slice(0, -1).join(', ')} e ${abertos.slice(-1)}`;
+            nitConfirm(`⚠ ${lista} ${abertos.length === 1 ? 'AINDA ESPERA' : 'AINDA ESPERAM'} A RESPOSTA DA FONTE.`,
+                'O relatório pode sair diferente do da fonte.', abrirRel, null,
+                { ok: 'GERAR ASSIM MESMO', cancelar: 'ESPERAR', seguro: 'cancelar' });
         }.bind(this));
         
         var checkIncluir = document.getElementById('check-incluir-normalizados');
@@ -3028,6 +3233,8 @@ const NitData = {
 
     await NitFirebase._init();
     NitGravacao.inicializar();
+    NitDiario.inicializar();
+    NitDecisoes.ouvirItensCompartilhados();
     Semaforo.inicializar();
     switchTab('tab-semaforo');
 
@@ -3277,6 +3484,7 @@ const NitNormalizar = {
                 card.dataset.observacoes = obsNova;
                 gravarHistoricoFirebase(eventoId, origem, 'NORMALIZADO', null, null, null, NitLogin.operador);
                 registrarAcao("'" + cod + "' normalizado — fim: " + dataFimBR + ' ' + horaFimHM + '.');
+                try { window.NitDecisoes && window.NitDecisoes.normalizadoManual(card, dataFimBR, horaFimHM); } catch (e) { /* não bloqueia */ }
                 showToast(cod + ' normalizado!', 'success');
             },
             function() {
@@ -3665,9 +3873,10 @@ window.NitNormalizar = NitNormalizar;
     // (a ⚠ DECIDIR aparece e some) e as recolhidas (faixa de 36px). Telas pequenas
     // continuam com as regras do CSS (!important), que têm prioridade.
     const NitColunas = {
-        _KEY: 'nit-colunas-recolhidas-v1',
-        _estado() { try { return JSON.parse(localStorage.getItem(this._KEY) || '{}') || {}; } catch (e) { return {}; } },
-        _salvar(e) { try { localStorage.setItem(this._KEY, JSON.stringify(e)); } catch (x) { /* sem armazenamento: ok */ } },
+        // escolha manual vale só nesta sessão (ao recarregar, as colunas vazias voltam a recolher sozinhas)
+        _manual: {},
+        _estado() { return this._manual; },
+        _salvar(e) { this._manual = e; try { localStorage.removeItem('nit-colunas-recolhidas-v1'); } catch (x) { /* ok */ } },
 
         ligar(col) {
             if (!col || col.dataset.recolhivel === '1') return;
@@ -3685,15 +3894,28 @@ window.NitNormalizar = NitNormalizar;
                 this.definir(col.id, !col.classList.contains('collapsed'));
             });
             // a ⚠ DECIDIR nasce aberta; as demais lembram a escolha do operador neste computador
-            if (col.id !== 'coluna-decidir' && this._estado()[col.id]) this.definir(col.id, true);
+            if (col.id !== 'coluna-decidir' && this._estado()[col.id] === true) this.definir(col.id, true, { auto: true });
         },
 
-        definir(id, recolher) {
+        definir(id, recolher, { auto = false } = {}) {
             const col = document.getElementById(id);
             if (!col) return;
             col.classList.toggle('collapsed', !!recolher);
-            if (id !== 'coluna-decidir') { const e = this._estado(); e[id] = !!recolher; this._salvar(e); }
+            if (!auto && id !== 'coluna-decidir') { const e = this._estado(); e[id] = !!recolher; this._salvar(e); }
+            if (!auto && id === 'coluna-decidir') this._decidirManual = !recolher ? 'aberta' : 'fechada';
             this.layout();
+        },
+        // coluna VAZIA recolhe sozinha e abre sozinha quando chega card — salvo se o operador já escolheu
+        automatico(contagens) {
+            const est = this._estado();
+            for (const [id, n] of Object.entries(contagens)) {
+                const col = document.getElementById(id);
+                if (!col) continue;
+                this.ligar(col);
+                if (est[id] === true || est[id] === false) continue;   // escolha manual vale
+                const quer = n === 0;
+                if (col.classList.contains('collapsed') !== quer) this.definir(id, quer, { auto: true });
+            }
         },
 
         layout() {
@@ -3702,7 +3924,7 @@ window.NitNormalizar = NitNormalizar;
             const cols = [...board.children].filter(c => c.classList.contains('kanban-column'));
             board.style.gridTemplateColumns = cols.map(c =>
                 c.classList.contains('collapsed') ? '36px'
-                : c.id === 'coluna-decidir' ? 'minmax(260px, 1.15fr)' : 'minmax(200px, 1fr)').join(' ');
+                : c.id === 'coluna-decidir' ? 'minmax(260px, 1.15fr)' : 'minmax(230px, 1fr)').join(' ');
         },
 
         inicializar() {
