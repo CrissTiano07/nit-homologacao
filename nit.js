@@ -1856,16 +1856,35 @@ const NitData = {
             // 1. Reconhecimento exato: início atual, horário anterior (alias) ou "sem início"
             const atualDe = new Map(), antigasDe = new Map();
             for (const c of g.cards) { antigasDe.set(c, []); }
+            // 13.2.1 (23/10, casos 446/933): card SEM início normalizado À MÃO é provisório (BR-DEC-002):
+            // continua sendo o card do semáforo até a fonte mandar a linha com início.
+            const provisorio = c => c.normalizado && c.manual && !c.atualId;
             for (const l of linhas) {
                 let c = g.cards.find(c => l.id && c.atualId === l.id);
-                if (!c && !l.id) c = pend.find(c => !c.atualId && !atualDe.has(c));
+                if (!c && !l.id) c = pend.find(c => !c.atualId && !atualDe.has(c)) || norm.find(c => provisorio(c) && !atualDe.has(c));
                 if (c && !atualDe.has(c)) { atualDe.set(c, l); livres.delete(l); continue; }
                 const a = l.id && g.cards.find(c => c.antigos.has(l.id));
                 if (a) { antigasDe.get(a).push(l); livres.delete(l); }
             }
 
+            let predecessor = null;       // última ocorrência encerrada conhecida { tFim, dataRef, card }
             // 2. Cards normalizados
             for (const c of norm) {
+                // 13.2.1: provisório sem linha própria recebe a linha COM início da mesma ocorrência
+                // (início ≤ fim que o operador informou); linha que começa depois é outra falha.
+                if (provisorio(c) && !atualDe.has(c) && !antigasDe.get(c).length) {
+                    const cand = [...livres].filter(l => l.id && l.tIni != null && (c.tFim == null || l.tIni <= c.tFim))
+                        .sort((a, b) => b.tIni - a.tIni)[0];
+                    if (cand) {
+                        livres.delete(cand);
+                        row(cand, c.id, c.id, cand.fechada ? 'RETIFICAR_E_NORMALIZAR' : 'RETIFICAR',
+                            cand.fechada ? 'normalizado à mão sem início: a fonte mandou a ocorrência com início e fim (vale a fonte)'
+                                         : 'normalizado à mão sem início recebe o início informado; segue provisório', 'REGISTRO',
+                            { inicioAnterior: '', provisorio: true });
+                        if (cand.fechada && (!predecessor || cand.tFim > predecessor.tFim)) predecessor = { tFim: cand.tFim, dataRef: cand.ev.dataReferencia, card: c.id };
+                        continue;
+                    }
+                }
                 const l = atualDe.get(c);
                 if (l && l.fechada) row(l, c.id, c.id, 'MANTER', 'mesma ocorrência, já normalizada (relatório cumulativo)');
                 if (l && !l.fechada) row(l, c.id, c.id, 'MANTER', 'normalizado voltou sem fim: só com decisão humana (BR-NOR-007)', 'ALERTA', { motivo: 'ATIVIDADE_INCOMUM' });
@@ -1874,7 +1893,6 @@ const NitData = {
 
             // 3. Cards pendentes
             let pendenteFica = null;      // card que continua pendente após esta classificação
-            let predecessor = null;       // última ocorrência encerrada conhecida { tFim, dataRef, card }
             for (const c of norm) if (c.tFim != null && (!predecessor || c.tFim > predecessor.tFim)) predecessor = { tFim: c.tFim, dataRef: c.dataReferencia, card: c.id };
             if (pend.length > 1) {
                 for (const c of pend) row(null, c.id, c.id, 'MANTER', `legado: ${pend.length} pendentes do mesmo semáforo; não mesclar automaticamente`, 'AMBIGUO');
@@ -2015,9 +2033,10 @@ const NitData = {
                 let aliases = [];
                 try { aliases = Object.keys(JSON.parse(el.dataset.aliases || '{}')); } catch (e) {}
                 const fim = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim();
+                let nm = {}; try { nm = JSON.parse(el.dataset.normManual || '{}') || {}; } catch (e) { nm = {}; }
                 return { id: el.dataset.eventoid, codigo: el.dataset.codigo, inicio: el.dataset.inicio || '',
                          aliases, normalizado: !!el.closest('#coluna-normalizados'), fim,
-                         dataReferencia: el.dataset.datareferencia || '' };
+                         dataReferencia: el.dataset.datareferencia || '', manual: !!nm.ts };
             });
         },
 
@@ -2215,6 +2234,17 @@ const NitData = {
                         el.dataset.ts_retificacao = String(patch.ts_retificacao);
                         st.retificados.push(`${r.codigo} (${(de.split(' ')[1] || de || 'sem início')} → ${(ev.inicio || '').split(' ')[1] || ev.inicio})`);
                         if (r.decisao === 'RETIFICAR') gravar(id, { ...patch, ...camposRelatorio(el, ev), ...heranca() });
+                        else if (!pendente && r.provisorio) {
+                            // 13.2.1: normalizado à mão sem início → a fonte mandou início e fim: vale a fonte
+                            const fimAtual = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim();
+                            const fimNovo = (ev.fim || '').trim();
+                            const extraFim = (fimNovo && fimAtual && fimNovo !== fimAtual) ? { fimAnterior: fimAtual, ts_fim_corrigido: Date.now() } : {};
+                            if (extraFim.fimAnterior) { el.dataset.fimAnterior = fimAtual; el.dataset.ts_fim_corrigido = String(extraFim.ts_fim_corrigido);
+                                st.fimCorrigido.push(`${r.codigo} (${fimAtual.split(' ')[1] || fimAtual} → ${fimNovo.split(' ')[1] || fimNovo})`); }
+                            el.dataset.normManual = '{}';
+                            normalizar(el, ev, { ...patch, ...camposRelatorio(el, ev), ...extraFim, normManual: null });
+                            st.confirmados.push(r.codigo);
+                        }
                         else { normalizar(el, ev, { ...patch, ...camposRelatorio(el, ev) }); st.transicoes++; st.normCod.push(r.codigo); }
                         break;
                     }
