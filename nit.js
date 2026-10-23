@@ -652,7 +652,7 @@
             NitFirebase.exec((db, ref, update, push) => push(ref(db, `auditoria/${this._dia()}`), e));
         },
         acao(texto) { this._gravar({ tipo: 'acao', linhas: [texto] }); },
-        processamento({ totais, aplic, itensNovos, resolvidos }) {
+        processamento({ totais, aplic, itensNovos, resolvidos, horasLidas }) {
             const L = [];
             const j = xs => [...new Set(xs || [])].join(', ');
             if (aplic.novosPend?.length) L.push(`＋ Novos pendentes: ${j(aplic.novosPend)}`);
@@ -665,6 +665,7 @@
             if (aplic.herdados)          L.push(`↪ Pendências de ontem que continuam hoje: ${aplic.herdados}`);
             if (itensNovos?.length)      L.push(`⚠ Erros da fonte: ${itensNovos.join(' · ')}`);
             if (resolvidos?.length)      L.push(`ℹ Resolvidos: ${j(resolvidos)}`);
+            if (horasLidas?.length)      L.push(`ℹ Hora lida com correção: ${horasLidas.join(' · ')}`);
             if (!L.length) L.push('Nada mudou.');
             this._gravar({ tipo: 'processamento', totais, linhas: L });
         },
@@ -1271,8 +1272,12 @@ const NitData = {
     const tipo = tipoFromPrefixo || tipoFromProblema || 'N/I';
 
     const resto   = m[4] || '';
-    const inicioM = resto.match(/In[ií]cio:[\t ]*(\d{2}\/\d{2}\/\d{4}[\t ]+\d{2}:\d{2})/i);
-    const fimM    = resto.match(/Fim:[\t ]*(\d{2}\/\d{2}\/\d{4}[\t ]+\d{2}:\d{2})/i);
+    // 13.2.1: hora com erro de digitação claro ("06.:50", "06.50", "06h50", "6:50") é lida como 06:50.
+    // O que não dá para ler com segurança fica vazio e guarda o que veio (o aviso NIT-14 mostra).
+    const inicioL = Semaforo._lerDataHora(resto, 'In[ií]cio');
+    const fimL    = Semaforo._lerDataHora(resto, 'Fim');
+    const inicioM = inicioL.valor ? [null, inicioL.valor] : null;
+    const fimM    = fimL.valor ? [null, fimL.valor] : null;
 
     // Extrai obs: procura "Obs:" explícito primeiro
     let obsInline = '';
@@ -1282,8 +1287,8 @@ const NitData = {
     } else {
         // Fallback: tudo após as datas de início/fim
         obsInline = resto
-            .replace(/In[ií]cio:[\t ]*\d{2}\/\d{2}\/\d{4}[\t ]+\d{2}:\d{2}/gi, '')
-            .replace(/Fim:[\t ]*\d{2}\/\d{2}\/\d{4}[\t ]+\d{2}:\d{2}/gi, '')
+            .replace(Semaforo._RE_DATAHORA('In[ií]cio', 'gi'), '')
+            .replace(Semaforo._RE_DATAHORA('Fim', 'gi'), '')
             .replace(/["*\t]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
@@ -1300,8 +1305,32 @@ const NitData = {
         fim:         fimM?.[1]    ?? '',
         observacoes: obsInline,
         equipe: '', viatura: '', pl: '', sub: '',
+        ...(inicioL.corrigida && { inicioVeio: inicioL.veio }),
+        ...(fimL.corrigida    && { fimVeio:    fimL.veio }),
+        ...(inicioL.ilegivel  && { inicioIlegivel: inicioL.ilegivel }),
     };
 },
+
+        // 13.2.1: data + hora de um campo ("Início:" / "Fim:"), tolerante a erro de digitação na hora.
+        // Aceita entre hora e minuto 1 a 3 sinais entre . : ; , h (e espaços): 06.:50, 06.50, 06;50, 06h50, 6:50.
+        // Só vale se 0–23 h e 0–59 min. Devolve { valor: 'dd/mm/aaaa hh:mm', corrigida, veio, ilegivel }.
+        _RE_DATAHORA(rotulo, flags = 'i') {
+            return new RegExp(`${rotulo}:[\\t ]*(\\d{2}\\/\\d{2}\\/\\d{4})[\\t ]+(\\d{1,2})[\\t ]*([.:;,hH](?:[\\t ]*[.:;,hH]){0,2})[\\t ]*(\\d{2})(?!\\d)`, flags);
+        },
+        _lerDataHora(texto, rotulo) {
+            const m = (texto || '').match(Semaforo._RE_DATAHORA(rotulo));
+            if (m) {
+                const hh = +m[2], mi = +m[4];
+                if (hh <= 23 && mi <= 59) {
+                    const valor = `${m[1]} ${String(hh).padStart(2, '0')}:${m[4]}`;
+                    const veio = `${m[2]}${m[3]}${m[4]}`;
+                    return { valor, corrigida: veio !== valor.slice(11), veio };
+                }
+            }
+            // tem data mas a hora não fecha (ex.: "06.:5", "65:30") → guarda o que veio para o aviso
+            const r = (texto || '').match(new RegExp(`${rotulo}:[\\t ]*\\d{2}\\/\\d{2}\\/\\d{4}[\\t ]+([^\\t"]{1,12})`, 'i'));
+            return { valor: '', ilegivel: r ? r[1].trim() : '' };
+        },
 
         // ── Firebase listener ─────────────────────────────────────────────
         _kanbanListenerAtivo: false,
@@ -1682,8 +1711,11 @@ const NitData = {
             }
             // NIT-14: sem hora de início
             for (const { ev } of r.semInicio) add({ msg: 'NIT-14', nivel: 'ambar', codigo: ev.codigo, cardId: cardDoCodigo(ev.codigo), chave: `NIT-14|${ev.codigo}`,
-                titulo: `⚠ ${ev.codigo} SEM HORA DE INÍCIO`, linha2: 'Veio sem a hora que começou.',
-                pergunta: `O ${ev.codigo} veio sem hora de início. Que horas começou?` });
+                ...(ev.inicioIlegivel
+                    ? { titulo: `⚠ ${ev.codigo} HORA DE INÍCIO ILEGÍVEL`, linha2: `Veio "${ev.inicioIlegivel}".`,
+                        pergunta: `O ${ev.codigo} veio com a hora de início "${ev.inicioIlegivel}". Que horas começou?` }
+                    : { titulo: `⚠ ${ev.codigo} SEM HORA DE INÍCIO`, linha2: 'Veio sem a hora que começou.',
+                        pergunta: `O ${ev.codigo} veio sem hora de início. Que horas começou?` }) });
 
             D.definirItens(itens, { aposProcessar });
             if (!aposProcessar) return;
@@ -1696,8 +1728,8 @@ const NitData = {
             // 📜 diário do processamento
             try {
                 const nomes = { 'NIT-10': 'não veio', 'NIT-11': 'voltou atrás', 'NIT-12': 'veio 2 vezes', 'NIT-13': 'horário não fecha', 'NIT-14': 'sem hora de início', 'NIT-16': 'tem 2 cards', 'NIT-35': 'não entrou no painel' };
-                const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${nomes[i.msg]}`);
-                NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [] });
+                const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${/ILEGÍVEL/.test(i.titulo || '') ? 'hora de início ilegível' : nomes[i.msg]}`);
+                NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [] });
             } catch (e) { /* não bloqueia */ }
 
             // NIT-01: nada esperando o operador e nada fora do normal
@@ -1760,6 +1792,11 @@ const NitData = {
             // 13.1: sem Início, a identidade é fixa (código + data do plantão + ordem),
             // sem Date.now() — reprocessar o mesmo relatório dá o mesmo eventoId.
             const semInicio = {};
+            Semaforo._horasLidas = [];
+            for (const e of eventos) {
+                if (e.inicioVeio) Semaforo._horasLidas.push(`${e.codigo} (início "${e.inicioVeio}" → ${e.inicio.slice(11)})`);
+                if (e.fimVeio)    Semaforo._horasLidas.push(`${e.codigo} (fim "${e.fimVeio}" → ${e.fim.slice(11)})`);
+            }
             return eventos
                 .filter(ev => ev.codigo)
                 .map(ev => {
