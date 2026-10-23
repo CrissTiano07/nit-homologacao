@@ -3158,7 +3158,20 @@ const NitData = {
             const card     = AppState.draggedCard;
             const coluna   = container.closest('.kanban-column')?.id || 'desconhecido';
             const eventoId = card.dataset.eventoid || card.dataset.codigo;
-            const origem   = card.dataset.coluna || 'desconhecido';
+            // 13.2.1: a coluna de verdade é onde o card está (card nascido normalizado nem sempre tem dataset.coluna)
+            const origem   = card.closest('.kanban-column')?.id || card.dataset.coluna || 'desconhecido';
+
+            // 13.2.1: arrastar PARA FORA de NORMALIZADOS = reabrir (antes só trocava a coluna e o banco
+            // continuava NORMALIZADO, com fim e marca de "à mão"). Se a fonte disser normalizado, o próximo
+            // relatório normaliza de novo.
+            if (origem === 'coluna-normalizados' && coluna !== 'coluna-normalizados') {
+                NitFirebase.exec((db, ref, update) =>
+                    update(ref(db, `kanban/${eventoId}`), { status: 'PENDENTE', data_fim: null, hora_fim: null, fim: null, ts_norm: null, normManual: null })
+                );
+                Object.assign(card.dataset, { status: 'PENDENTE', data_fim: '', hora_fim: '', fim: '', normManual: '{}' });
+                const b = card.querySelector('.card-body'); if (b) b.innerHTML = this._buildBodyHTML(card.dataset);
+                try { window.NitDiario && window.NitDiario.acao(`${card.dataset.codigo} reaberto (arrastado de NORMALIZADOS)`); } catch (e) { /* não bloqueia */ }
+            }
 
             // VIA LIVRE / AMC:
             // o arraste passa a registrar também a trajetória operacional (Coluna N).
@@ -3233,6 +3246,25 @@ const NitData = {
                         );
                     });
 
+            } else if (coluna === 'coluna-normalizados' && origem !== 'coluna-normalizados') {
+                // 13.2.1 (decisão do Cristiano, 23/10): arrastar para NORMALIZADOS normaliza na hora atual.
+                // Antes só trocava a coluna (sem fim, status PENDENTE no banco) e o card ficava fora da regra
+                // da normalização à mão (BR-DEC-002) → "voltou atrás" e card duplicado quando sem início.
+                const agora = new Date();
+                const dataFimBR = NitData.hoje();
+                const horaFimHM = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+                NitFirebase.exec((db, ref, update) =>
+                    update(ref(db, `kanban/${eventoId}`), {
+                        coluna, status: 'NORMALIZADO', data_fim: dataFimBR, hora_fim: horaFimHM, ts_norm: Date.now(),
+                        operador: NitLogin.operador || 'anon', turno: NitLogin.turno || '',
+                        ts: firebase.database.ServerValue.TIMESTAMP,
+                    })
+                );
+                Object.assign(card.dataset, { coluna, status: 'NORMALIZADO', data_fim: dataFimBR, hora_fim: horaFimHM, fim: `${dataFimBR} ${horaFimHM}` });
+                DOM.colunaNormalizados.prepend(card);
+                try { window.NitDecisoes && window.NitDecisoes.normalizadoManual(card, dataFimBR, horaFimHM); } catch (e) { /* não bloqueia */ }
+                showToast(`${card.dataset.codigo} normalizado às ${horaFimHM}.`, 'success');
+                Semaforo.atualizarPainel();
             } else {
                 // Demais colunas continuam com o comportamento original.
                 NitFirebase.exec((db, ref, update) =>
@@ -4878,6 +4910,9 @@ const NitCentral = {
         Object.assign(card.dataset, { coluna: 'coluna-normalizados', status: 'NORMALIZADO', data_fim: dataFimBR, hora_fim: horaFimHM });
         showToast(`${card.dataset.codigo} normalizado.`, 'success');
         registrarAcao(`Normalizado: ${card.dataset.codigo} às ${horaFimHM}`);
+        // 13.2.1: normalização pela Central também é "à mão" (provisória até a fonte mandar o fim)
+        card.dataset.fim = `${dataFimBR} ${horaFimHM}`;
+        try { window.NitDecisoes && window.NitDecisoes.normalizadoManual(card, dataFimBR, horaFimHM); } catch (e) { /* não bloqueia */ }
         this.fechar();
     },
 
