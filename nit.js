@@ -652,7 +652,7 @@
             NitFirebase.exec((db, ref, update, push) => push(ref(db, `auditoria/${this._dia()}`), e));
         },
         acao(texto) { this._gravar({ tipo: 'acao', linhas: [texto] }); },
-        processamento({ totais, aplic, itensNovos, resolvidos, horasLidas }) {
+        processamento({ totais, aplic, itensNovos, resolvidos, horasLidas, codigosLidos }) {
             const L = [];
             const j = xs => [...new Set(xs || [])].join(', ');
             if (aplic.novosPend?.length) L.push(`＋ Novos pendentes: ${j(aplic.novosPend)}`);
@@ -665,7 +665,14 @@
             if (aplic.herdados)          L.push(`↪ Pendências de ontem que continuam hoje: ${aplic.herdados}`);
             if (itensNovos?.length)      L.push(`⚠ Erros da fonte: ${itensNovos.join(' · ')}`);
             if (resolvidos?.length)      L.push(`ℹ Resolvidos: ${j(resolvidos)}`);
-            if (horasLidas?.length)      L.push(`ℹ Hora lida com correção: ${horasLidas.join(' · ')}`);
+            // a mesma correção só aparece na 1ª vez do dia (a fonte repete o erro em todo relatório)
+            this._horasDitas = this._horasDitas || new Set();
+            const horasNovas = [...new Set(horasLidas || [])].filter(x => !this._horasDitas.has(`${this._dia()}|${x}`));
+            horasNovas.forEach(x => this._horasDitas.add(`${this._dia()}|${x}`));
+            const codNovos = (codigosLidos || []).filter(x => !this._horasDitas.has(`${this._dia()}|cod|${x}`));
+            codNovos.forEach(x => this._horasDitas.add(`${this._dia()}|cod|${x}`));
+            if (codNovos.length)         L.push(`ℹ Código lido com correção: ${codNovos.join(' · ')}`);
+            if (horasNovas.length)       L.push(`ℹ Hora lida com correção: ${horasNovas.join(' · ')}`);
             if (!L.length) L.push('Nada mudou.');
             this._gravar({ tipo: 'processamento', totais, linhas: L });
         },
@@ -1296,9 +1303,14 @@ const NitData = {
         if (/^[.\-–—\s"]+$/.test(obsInline) || obsInline.length < 3) obsInline = '';
     }
 
+    // 13.2.1 (23/10): os códigos da CEMOB têm 3 dígitos ou mais (017, 084, 1106). "17" é o 017 sem o zero —
+    // sem isso o NIT abria um segundo card para o mesmo semáforo.
+    const codVeio = m[1].trim();
+    const codigo = /^\d{1,2}$/.test(codVeio) ? codVeio.padStart(3, '0') : codVeio;
     return {
         tipo,
-        codigo:      m[1].trim(),
+        codigo,
+        ...(codigo !== codVeio ? { codigoVeio: codVeio } : {}),
         endereco:    m[2].trim().replace(/\s+/g, ' '),
         problema:    m[3].trim().toUpperCase(),
         inicio:      inicioM?.[1] ?? '',
@@ -1729,7 +1741,7 @@ const NitData = {
             try {
                 const nomes = { 'NIT-10': 'não veio', 'NIT-11': 'voltou atrás', 'NIT-12': 'veio 2 vezes', 'NIT-13': 'horário não fecha', 'NIT-14': 'sem hora de início', 'NIT-16': 'tem 2 cards', 'NIT-35': 'não entrou no painel' };
                 const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${/ILEGÍVEL/.test(i.titulo || '') ? 'hora de início ilegível' : nomes[i.msg]}`);
-                NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [] });
+                NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [], codigosLidos: Semaforo._codigosLidos || [] });
             } catch (e) { /* não bloqueia */ }
 
             // NIT-01: nada esperando o operador e nada fora do normal
@@ -1793,6 +1805,7 @@ const NitData = {
             // sem Date.now() — reprocessar o mesmo relatório dá o mesmo eventoId.
             const semInicio = {};
             Semaforo._horasLidas = [];
+            Semaforo._codigosLidos = [...new Set(eventos.filter(e => e.codigoVeio).map(e => `"${e.codigoVeio}" → ${e.codigo}`))];
             for (const e of eventos) {
                 if (e.inicioVeio) Semaforo._horasLidas.push(`${e.codigo} (início "${e.inicioVeio}" → ${e.inicio.slice(11)})`);
                 if (e.fimVeio)    Semaforo._horasLidas.push(`${e.codigo} (fim "${e.fimVeio}" → ${e.fim.slice(11)})`);
@@ -1848,7 +1861,16 @@ const NitData = {
                 out.push({ idx: l ? l.idx : null, codigo: cod, linha: l ? `${hm(l)} ${l.fechada ? 'ENCERRADA' : 'ABERTA'}` : '(sem linha no relatório)',
                            ocorrencia, card, decisao, justificativa, gravidade, ...extra });
             const seq = (fim, ini) => fim != null && ini != null ? (fim <= ini ? 'OK' : 'SOBREPOSTO') : 'INSUFICIENTE';
-            const linhas = g.linhas.slice().sort((a, b) => (a.tIni ?? 9e15) - (b.tIni ?? 9e15) || a.idx - b.idx);
+            const ordenadas = g.linhas.slice().sort((a, b) => (a.tIni ?? 9e15) - (b.tIni ?? 9e15) || a.idx - b.idx);
+            // 13.2.1 (estresse 23/10): a MESMA linha repetida no relatório (mesmo início, mesma seção, mesmo fim)
+            // é uma ocorrência só — a cópia segue a decisão da original e nunca abre outro card.
+            const repetidas = [];
+            const linhas = ordenadas.filter(l => {
+                const o = l.id && ordenadas.find(x => x !== l && x.idx < l.idx && x.id === l.id && x.fechada === l.fechada && (x.ev.fim || '') === (l.ev.fim || ''));
+                if (o) { repetidas.push([l, o]); return false; }
+                return true;
+            });
+            const n0 = out.length;
             const livres = new Set(linhas);
             const pend = g.cards.filter(c => !c.normalizado);
             const norm = g.cards.filter(c => c.normalizado);
@@ -1858,10 +1880,28 @@ const NitData = {
             for (const c of g.cards) { antigasDe.set(c, []); }
             // 13.2.1 (23/10, casos 446/933): card SEM início normalizado À MÃO é provisório (BR-DEC-002):
             // continua sendo o card do semáforo até a fonte mandar a linha com início.
-            const provisorio = c => c.normalizado && c.manual && !c.atualId;
+            // 13.2.1 (estresse 23/10): vale também para o card SEM início que já nasceu normalizado pela fonte —
+            // senão cada relatório com a linha sem início abria outro (_SI, _SI_2, _SI_3…).
+            const provisorio = c => c.normalizado && !c.atualId;
             for (const l of linhas) {
                 let c = g.cards.find(c => l.id && c.atualId === l.id);
-                if (!c && !l.id) c = pend.find(c => !c.atualId && !atualDe.has(c)) || norm.find(c => provisorio(c) && !atualDe.has(c));
+                if (!c && !l.id) {
+                    // 13.2.1 (estresse 23/10): linha sem início (a fonte apagou a hora). O relatório é cumulativo:
+                    // se um normalizado do semáforo ficou sem a própria linha, é a linha dele que perdeu a hora.
+                    //  1º normalizado de MESMO fim · 2º pendente sem início · 3º normalizado provisório (sem início)
+                    //  · 4º o único normalizado sem linha (linha aberta → regra do normalizado que volta sem fim).
+                    const semLinha = norm.filter(c => !atualDe.has(c) && c.atualId && !linhas.some(x => x.id && x.id === c.atualId));
+                    c = (l.fechada && l.tFim != null && semLinha.find(c => c.tFim === l.tFim))
+                        || pend.find(c => !c.atualId && !atualDe.has(c))
+                        // (provisório que tem uma linha COM início esperando por ele no passo 2 fica para ela)
+                        || norm.find(c => provisorio(c) && !atualDe.has(c) && ![...livres].some(x => x.id && x.tIni != null && (c.tFim == null || x.tIni <= c.tFim)))
+                        || (semLinha.length === 1 && (l.tFim == null || semLinha[0].tIni == null || l.tFim >= semLinha[0].tIni) ? semLinha[0] : null);
+                    //  · 5º linha ENCERRADA: o único pendente com início que ficou sem linha (a fonte fechou e apagou a hora)
+                    if (!c && l.fechada) {
+                        const pSem = pend.filter(c => !atualDe.has(c) && c.atualId && !linhas.some(x => x.id && x.id === c.atualId) && !(antigasDe.get(c) || []).length);
+                        if (pSem.length === 1 && (l.tFim == null || pSem[0].tIni == null || l.tFim >= pSem[0].tIni)) c = pSem[0];
+                    }
+                }
                 if (c && !atualDe.has(c)) { atualDe.set(c, l); livres.delete(l); continue; }
                 const a = l.id && g.cards.find(c => c.antigos.has(l.id));
                 if (a) { antigasDe.get(a).push(l); livres.delete(l); }
@@ -1882,6 +1922,32 @@ const NitData = {
                                          : 'normalizado à mão sem início recebe o início informado; segue provisório', 'REGISTRO',
                             { inicioAnterior: '', provisorio: true });
                         if (cand.fechada && (!predecessor || cand.tFim > predecessor.tFim)) predecessor = { tFim: cand.tFim, dataRef: cand.ev.dataReferencia, card: c.id };
+                        continue;
+                    }
+                }
+                // 13.2.1 (estresse 23/10): a fonte corrigiu o INÍCIO de uma ocorrência já normalizada. O relatório é
+                // cumulativo: a linha do card sumiu e aparece uma única linha encerrada do mesmo semáforo, com o mesmo
+                // fim ou sobreposta → é a mesma ocorrência com o início corrigido (antes abria um 2º card).
+                if (!provisorio(c) && !atualDe.has(c) && c.tFim != null) {
+                    const ant = antigasDe.get(c);
+                    const cand = ant.length === 1 && ant[0].fechada ? [ant[0]]
+                        : ant.length ? [] : [...livres].filter(l => l.id && l.tIni != null && (l.fechada
+                              ? l.tFim != null && (l.tFim === c.tFim || (l.tIni <= c.tFim && (c.tIni == null || l.tFim >= c.tIni)))
+                              // aberta que começa ANTES do fim deste normalizado é a mesma ocorrência (um semáforo não tem
+                              // duas falhas ao mesmo tempo): à mão → a fonte corrigiu o início e ainda não fechou;
+                              // pela fonte → voltou sem fim com o início corrigido (pergunta, BR-NOR-007)
+                              : l.tIni <= c.tFim));
+                    if (cand.length === 1) {
+                        const x = cand[0]; livres.delete(x); antigasDe.set(c, []);
+                        if (x.fechada) {
+                            row(x, c.id, c.id, 'RETIFICAR_E_NORMALIZAR', 'início de ocorrência já normalizada corrigido pela fonte (a linha do card sumiu e veio uma só, sobreposta)', 'REGISTRO',
+                                { inicioAnterior: c.inicio || '', jaNormalizado: true });
+                            if (!predecessor || x.tFim > predecessor.tFim) predecessor = { tFim: x.tFim, dataRef: x.ev.dataReferencia, card: c.id };
+                        } else if (c.manual) {
+                            row(x, c.id, c.id, 'RETIFICAR', 'normalizado à mão: a fonte corrigiu o início e ainda não mandou o fim (segue provisório)', 'REGISTRO', { inicioAnterior: c.inicio || '' });
+                        } else {
+                            row(x, c.id, c.id, 'MANTER', 'normalizado voltou sem fim, com o início trocado: só com decisão humana (BR-NOR-007)', 'ALERTA', { motivo: 'ATIVIDADE_INCOMUM' });
+                        }
                         continue;
                     }
                 }
@@ -1956,6 +2022,12 @@ const NitData = {
                 if (pend.length === 1 && fechadasLivres.length === 1 && livres.size === 1) {
                     const x = fechadasLivres[0];
                     livres.delete(x);
+                    // 13.2.1: a linha veio SEM início — encerra o card mas não apaga o início que ele tem (C1)
+                    if (!x.id && c.atualId) {
+                        row(x, c.id, c.id, 'NORMALIZAR', 'linha encerrada sem início: fim do card, que mantém o início que já tinha', 'REGISTRO', { motivo: 'SEM_INICIO' });
+                        predecessor = { tFim: x.tFim, dataRef: x.ev.dataReferencia, card: c.id };
+                        continue;
+                    }
                     row(x, c.id, c.id, 'RETIFICAR_E_NORMALIZAR',
                         `início do card (${c.inicio || 'sem início'}) sumiu do relatório e o semáforo aparece com um único horário, já encerrado: correção de horário com fim no mesmo card (CONTRATO §13)`,
                         'REGISTRO', { inicioAnterior: c.inicio || '' });
@@ -2025,6 +2097,10 @@ const NitData = {
                 }
                 pendenteFica = `novo:${l.idx}`;
             }
+            for (const [l, o] of repetidas) {
+                const ro = out.slice(n0).find(r => r.idx === o.idx);
+                if (ro) row(l, ro.card, ro.ocorrencia, 'MANTER', 'linha repetida no relatório: mesma ocorrência', 'REGISTRO', { repetida: true });
+            }
         },
 
         // Estado atual dos cards no painel, no formato de _classificarLinhas (só leitura).
@@ -2032,7 +2108,7 @@ const NitData = {
             return [...document.querySelectorAll('#tab-semaforo .kanban-card')].map(el => {
                 let aliases = [];
                 try { aliases = Object.keys(JSON.parse(el.dataset.aliases || '{}')); } catch (e) {}
-                const fim = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim();
+                const fim = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim() || (el.dataset.fim || '').trim();   // 13.2.1: card que nasceu normalizado guarda em data-fim
                 let nm = {}; try { nm = JSON.parse(el.dataset.normManual || '{}') || {}; } catch (e) { nm = {}; }
                 return { id: el.dataset.eventoid, codigo: el.dataset.codigo, inicio: el.dataset.inicio || '',
                          aliases, normalizado: !!el.closest('#coluna-normalizados'), fim,
@@ -2234,6 +2310,20 @@ const NitData = {
                         el.dataset.ts_retificacao = String(patch.ts_retificacao);
                         st.retificados.push(`${r.codigo} (${(de.split(' ')[1] || de || 'sem início')} → ${(ev.inicio || '').split(' ')[1] || ev.inicio})`);
                         if (r.decisao === 'RETIFICAR') gravar(id, { ...patch, ...camposRelatorio(el, ev), ...heranca() });
+                        else if (!pendente && r.jaNormalizado) {
+                            // 13.2.1: só o início muda; se o fim também veio diferente, vale o da fonte (com registro)
+                            const fimAtual = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim() || (el.dataset.fim || '').trim();
+                            const fimNovo = (ev.fim || '').trim();
+                            const p2 = { ...patch, ...camposRelatorio(el, ev) };
+                            if (fimNovo && fimNovo !== fimAtual) {
+                                const f = fimPartes(ev); Object.assign(p2, f, { fimAnterior: fimAtual, ts_fim_corrigido: Date.now() });
+                                Object.assign(el.dataset, f, { fimAnterior: fimAtual, fim: '' }); if (!lote) p2.fim = null;
+                                st.fimCorrigido.push(`${r.codigo} (${fimAtual.split(' ')[1] || fimAtual} → ${f.hora_fim})`);
+                            }
+                            let nm = {}; try { nm = JSON.parse(el.dataset.normManual || '{}') || {}; } catch (e) { nm = {}; }
+                            if (nm.ts && !lote) { el.dataset.normManual = '{}'; p2.normManual = null; st.confirmados.push(r.codigo); }   // a fonte mandou o fim: deixa de ser provisório
+                            gravar(id, p2);
+                        }
                         else if (!pendente && r.provisorio) {
                             // 13.2.1: normalizado à mão sem início → a fonte mandou início e fim: vale a fonte
                             const fimAtual = `${el.dataset.data_fim || ''} ${el.dataset.hora_fim || ''}`.trim();
