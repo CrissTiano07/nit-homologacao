@@ -847,6 +847,100 @@
     };
     window.NitDiario = NitDiario;
 
+    // ── 13.2.2 (24/10, pedido do supervisor): ADM limpa o painel — com cópia para restaurar ──
+    // Para quando um relatório errado entrou e o status não pode ser compartilhado. O operador avisa o ADM; o ADM decide.
+    // Segurança no banco (regras): só nit_admins/{chave} apaga o nó kanban inteiro e lê/grava a lixeira.
+    // Limpa: kanban + meta/decisoes_ativas. A LINHA DO TEMPO fica (registra quem limpou e quando).
+    const NitAdmin = {
+        ehAdmin: false,
+        MAX_COPIAS: 5,
+        _chave() { return NitLogin._emailParaChave(NitLogin.email || ''); },
+        verificar() {
+            const db = NitFirebase.db, chave = this._chave();
+            if (!db || !chave) return;
+            db.ref(`nit_admins/${chave}`).once('value')
+                .then(s => { this.ehAdmin = s.val() === true; if (this.ehAdmin) this._botoes(); })
+                .catch(() => { this.ehAdmin = false; });   // sem permissão de leitura = não é ADM
+        },
+        _botoes() {
+            if (document.getElementById('nit-admin-limpar')) return;
+            const ref = document.getElementById('nit-diario-btn') || document.getElementById('nit-gravacao-status');
+            if (!ref) return;
+            const mk = (id, txt, tit, fn) => { const b = document.createElement('button'); b.id = id; b.type = 'button';
+                b.className = 'nd-btn nd-btn-peq nit-admin-btn'; b.textContent = txt; b.title = tit; b.addEventListener('click', fn); return b; };
+            const limpar = mk('nit-admin-limpar', '🧹 LIMPAR PAINEL', 'ADM: apaga todos os cards e avisos (fica uma cópia)', () => this.limpar());
+            const restaurar = mk('nit-admin-restaurar', '↩ RESTAURAR', 'ADM: devolve o último painel limpo', () => this.restaurar());
+            restaurar.style.display = 'none';
+            ref.insertAdjacentElement('afterend', restaurar);
+            ref.insertAdjacentElement('afterend', limpar);
+            NitFirebase.db.ref('lixeira').on('value', snap => {
+                const u = this._ultima(snap.val());
+                restaurar.style.display = u && !u.restauradoTs ? '' : 'none';
+                if (u) restaurar.title = `ADM: devolve o painel limpo às ${NitDiario._hhmm(u.ts)} (${u.cards} cards)`;
+            });
+        },
+        _ultima(lix) { const es = Object.entries(lix || {}).map(([id, v]) => ({ id, ...v })).filter(v => v.ts).sort((a, b) => b.ts - a.ts); return es[0] || null; },
+        limpar() {
+            if (!this.ehAdmin) return;
+            const n = document.querySelectorAll('#tab-semaforo .kanban-card').length;
+            nitConfirm('🧹 LIMPAR O PAINEL?',
+                `Apaga os ${n} cards e os avisos para *todos os operadores*.\nFica uma cópia: dá para RESTAURAR depois.`,
+                () => this._limpar(), null, { ok: 'LIMPAR', cancelar: 'CANCELAR', seguro: 'cancelar' });
+        },
+        async _limpar() {
+            const db = NitFirebase.db; if (!db) return;
+            try {
+                const [k, d, lix] = await Promise.all([db.ref('kanban').once('value'), db.ref('meta/decisoes_ativas').once('value'), db.ref('lixeira').once('value')]);
+                const ts = Date.now(), kanban = k.val() || null, cards = Object.keys(kanban || {}).length;
+                const lote = {
+                    kanban: null, 'meta/decisoes_ativas': null, 'meta/dataReferencia': null,
+                    'meta/ultimoReset': { ts, operador: NitLogin.operador || 'anon', turno: NitLogin.turno || '' },
+                    [`lixeira/c${ts}`]: { ts, por: NitLogin.operador || 'anon', email: NitLogin.email || '', cards, kanban, decisoes_ativas: d.val() || null },
+                };
+                // guarda só as últimas cópias (plano gratuito do Firebase)
+                Object.entries(lix.val() || {}).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0)).slice(this.MAX_COPIAS - 1).forEach(([id]) => { lote[`lixeira/${id}`] = null; });
+                await NitGravacao.rastrear(db.ref().update(lote), 'limpar painel');
+                document.querySelectorAll('#tab-semaforo .kanban-cards-container').forEach(c => c.replaceChildren());
+                try { NitDecisoes.definirItens([], { aposProcessar: false }); } catch (e) { /* não bloqueia */ }
+                Semaforo.atualizarPainel();
+                NitDiario.acao(`🧹 Painel limpo (${cards} cards). Cópia guardada.`);
+                showToast(`Painel limpo. ${cards} cards guardados na cópia.`, 'success', 6000);
+                registrarAcao(`Painel limpo pelo ADM (${cards} cards, cópia c${ts}).`);
+            } catch (e) {
+                showToast('❌ Não deu para limpar o painel. Nada foi apagado.', 'error', 8000);
+                console.error('[NIT] limpar painel', e);
+            }
+        },
+        restaurar() {
+            if (!this.ehAdmin) return;
+            nitConfirm('↩ RESTAURAR O PAINEL?',
+                'Devolve os cards e os avisos do último painel limpo.\nCards que entraram depois continuam.',
+                () => this._restaurar(), null, { ok: 'RESTAURAR', cancelar: 'CANCELAR' });
+        },
+        async _restaurar() {
+            const db = NitFirebase.db; if (!db) return;
+            try {
+                const [lix, k, d] = await Promise.all([db.ref('lixeira').once('value'), db.ref('kanban').once('value'), db.ref('meta/decisoes_ativas').once('value')]);
+                const u = this._ultima(lix.val());
+                if (!u || u.restauradoTs) { showToast('Nada para restaurar.', 'info'); return; }
+                const agora = k.val() || {}, lote = {};
+                let n = 0;
+                for (const [id, card] of Object.entries(u.kanban || {})) if (!agora[id]) { lote[`kanban/${id}`] = card; n++; }
+                if (!d.val() && u.decisoes_ativas) lote['meta/decisoes_ativas'] = u.decisoes_ativas;
+                lote[`lixeira/${u.id}/restauradoTs`] = Date.now();
+                lote[`lixeira/${u.id}/restauradoPor`] = NitLogin.operador || 'anon';
+                await NitGravacao.rastrear(db.ref().update(lote), 'restaurar painel');
+                NitDiario.acao(`↩ Painel restaurado (${n} cards).`);
+                showToast(`Painel restaurado: ${n} cards de volta.`, 'success', 6000);
+                registrarAcao(`Painel restaurado pelo ADM (${n} cards, cópia ${u.id}).`);
+            } catch (e) {
+                showToast('❌ Não deu para restaurar. Nada foi mudado.', 'error', 8000);
+                console.error('[NIT] restaurar painel', e);
+            }
+        },
+    };
+    window.NitAdmin = NitAdmin;
+
     // ── LOGIN ─────────────────────────────────────────────────────────────────
     const NitLogin = {
         operador: null,
@@ -1002,6 +1096,7 @@
             showToast(`Bem-vindo, ${this.operador}!`, 'success');
             registrarAcao(`Login: ${this.operador} (${this.email}) — ${this.turno}.`);
             setTimeout(() => NitProcessamento.verificar(), 800);
+            try { NitAdmin.verificar(); } catch (e) { /* não bloqueia */ }
         },
 
         // ── Logout ────────────────────────────────────────────────────────

@@ -2211,3 +2211,7 @@
 .btn-toggle-col { min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center; }
 .btn-toggle-col:focus-visible { outline: 2px solid var(--color-primary-hover); outline-offset: 1px; border-radius: 4px; }
 .balanco-item span { text-transform: none; letter-spacing: 0; font-size: 12px; }
+
+/* 13.2.2 · ADM: limpar / restaurar o painel */
+.nit-admin-btn { margin-left: 8px; border-color: color-mix(in srgb, var(--color-danger) 55%, transparent) !important; color: #ff9b94 !important; }
+#nit-admin-restaurar { border-color: color-mix(in srgb, var(--color-info) 55%, transparent) !important; color: #7dd3fc !important; }
