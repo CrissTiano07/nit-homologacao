@@ -656,15 +656,15 @@
         processamento({ totais, aplic, itensNovos, resolvidos, horasLidas, codigosLidos }) {
             const L = [];
             const j = xs => [...new Set(xs || [])].join(', ');
-            if (aplic.novosPend?.length) L.push(`＋ Novos pendentes: ${j(aplic.novosPend)}`);
-            if (aplic.novosNorm?.length) L.push(`＋ Novos já normalizados: ${j(aplic.novosNorm)}`);
+            if (aplic.novosPend?.length) L.push(`＋ Entraram: ${j(aplic.novosPend)}`);
+            if (aplic.novosNorm?.length) L.push(`＋ Entraram normalizados: ${j(aplic.novosNorm)}`);
             if (aplic.normCod?.length)   L.push(`✓ Normalizaram: ${j(aplic.normCod)}`);
             if (aplic.reinc?.length)     L.push(`↺ Apagaram de novo: ${j(aplic.reinc)}`);
-            if (aplic.retificados?.length) L.push(`⟲ Início corrigido pela fonte: ${aplic.retificados.join(' · ')}`);
-            if (aplic.fimCorrigido?.length) L.push(`⟲ Fim corrigido pela fonte: ${aplic.fimCorrigido.join(' · ')}`);
+            if (aplic.retificados?.length) L.push(`⟲ Início corrigido no relatório: ${aplic.retificados.join(' · ')}`);
+            if (aplic.fimCorrigido?.length) L.push(`⟲ Fim corrigido no relatório: ${aplic.fimCorrigido.join(' · ')}`);
             if (aplic.restaurados?.length) L.push(`↩ Voltaram ao painel (a fonte listou de novo): ${j(aplic.restaurados)}`);
             if (aplic.herdados)          L.push(`↪ Pendências de ontem que continuam hoje: ${aplic.herdados}`);
-            if (itensNovos?.length)      L.push(`⚠ Erros da fonte: ${itensNovos.join(' · ')}`);
+            if (itensNovos?.length)      L.push(`⚠ Informações incompletas: ${itensNovos.join(' · ')}`);
             if (resolvidos?.length)      L.push(`ℹ Resolvidos: ${j(resolvidos)}`);
             // a mesma correção só aparece na 1ª vez do dia (a fonte repete o erro em todo relatório)
             this._horasDitas = this._horasDitas || new Set();
@@ -719,16 +719,16 @@
         },
         // Cada linha gravada ("＋ Novos pendentes: 105, 530") vira { tipo, rótulo, itens:[{c, d}] }
         _TIPOS: [
-            [/^＋ Novos pendentes: /,              'novo',   'Novos pendentes'],
-            [/^＋ Novos já normalizados: /,        'novoN',  'Já chegaram normalizados'],
+            [/^＋ (?:Novos pendentes|Entraram): /,             'novo',   'Entraram'],
+            [/^＋ (?:Novos já normalizados|Entraram normalizados): /, 'novoN', 'Entraram normalizados'],
             [/^✓ Normalizaram: /,                  'norm',   'Normalizaram'],
             [/^↺ Apagaram de novo: /,              'reinc',  'Apagaram de novo'],
-            [/^⟲ Início corrigido pela fonte: /,   'corr',   'Início corrigido pela fonte'],
-            [/^⟲ Fim corrigido pela fonte: /,      'corr',   'Fim corrigido pela fonte'],
+            [/^⟲ Início corrigido (?:pela fonte|no relatório): /, 'corr', 'Início corrigido no relatório'],
+            [/^⟲ Fim corrigido (?:pela fonte|no relatório): /,    'corr', 'Fim corrigido no relatório'],
             [/^↩ Voltaram ao painel[^:]*: /,       'norm',   'Voltaram ao painel'],
             [/^↪ Pendências de ontem que continuam hoje: /, 'info', 'Pendências de ontem que continuam'],
-            [/^⚠ Erros da fonte: /,                'erro',   'Erro da fonte'],
-            [/^ℹ Resolvidos: /,                    'resol',  'Erro resolvido'],
+            [/^⚠ (?:Erros da fonte|Informações incompletas): /, 'erro', 'Informação incompleta'],
+            [/^ℹ Resolvidos: /,                    'resol',  'Resolvido'],
             [/^ℹ Hora lida com correção: /,        'leit',   'Hora lida com correção'],
             [/^ℹ Código lido com correção: /,      'leit',   'Código lido com correção'],
         ],
@@ -776,12 +776,12 @@
             if (u?.t) tile('Agora', el('b', 'ndt-p', String(u.t.p)), el('span', '', u.t.p === 1 ? ' pendente  ' : ' pendentes  '), el('b', 'ndt-n', String(u.t.n)), el('span', '', u.t.n === 1 ? ' normalizado' : ' normalizados'));
             if (u) tile('Último relatório', el('b', 'ndt-mono', this._hhmm(u.ts)), el('span', '', ` · ${u.por}`));
             const nErros = es.reduce((s, x) => s + x.grupos.filter(g => g.tipo === 'erro').reduce((a, g) => a + g.itens.length, 0), 0);
-            tile('Erros da fonte hoje', el('b', nErros ? 'ndt-a' : '', String(nErros)), el('span', '', nErros === 1 ? ' erro' : ' erros'));
+            tile('Informações incompletas hoje', el('b', nErros ? 'ndt-a' : '', String(nErros)));
             const filtros = ov.querySelector('.ndt-filtros'); filtros.replaceChildren();
             // 13.2.1 (24/10, homologação): o filtro mostra só as LINHAS daquele tipo (antes só escondia blocos — com um
             // relatório só, clicar parecia não fazer nada). O número é de itens, não de blocos.
             const nItens = tipos => es.reduce((s, x) => s + x.grupos.filter(g => tipos.includes(g.tipo)).reduce((a, g) => a + Math.max(1, g.itens.length), 0), 0);
-            for (const [id, rot, n] of [['tudo', 'Tudo', es.length], ['erros', 'Erros da fonte', nItens(['erro'])], ['correcoes', 'Correções', nItens(['corr', 'leit'])], ['operador', 'Ações do operador', acoes.length]]) {
+            for (const [id, rot, n] of [['tudo', 'Tudo', es.length], ['erros', 'Informações incompletas', nItens(['erro'])], ['correcoes', 'Correções', nItens(['corr', 'leit'])], ['operador', 'Ações do operador', acoes.length]]) {
                 const b = el('button', 'ndt-filtro' + (id === filtro ? ' ativo' : ''), `${rot} `); b.type = 'button'; b.dataset.filtro = id; b.setAttribute('aria-pressed', String(id === filtro));
                 b.append(el('span', 'ndt-qtd', String(n))); filtros.append(b);
             }
