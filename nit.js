@@ -684,8 +684,8 @@
             if (!ref) return;
             const b = document.createElement('button');
             b.id = 'nit-diario-btn'; b.type = 'button'; b.className = 'nd-btn nd-btn-peq nit-diario-btn';
-            b.textContent = '📜 O QUE MUDOU';
-            b.title = 'O que aconteceu hoje: relatórios processados, correções da fonte e decisões';
+            b.textContent = '📜 LINHA DO TEMPO';
+            b.title = 'Linha do tempo de hoje: relatórios processados, correções da fonte e decisões';
             b.addEventListener('click', () => this.abrir());
             ref.insertAdjacentElement('afterend', b);
         },
@@ -694,12 +694,17 @@
             if (!ov) {
                 ov = document.createElement('div');
                 ov.id = 'nit-diario'; ov.className = 'nit-diario-overlay';
-                ov.innerHTML = `<div class="nit-diario-caixa" role="dialog" aria-label="O que mudou hoje">
-                    <div class="nit-diario-topo"><strong>📜 O QUE MUDOU HOJE</strong>
+                // 13.2.1 (24/10): "LINHA DO TEMPO" — mesma informação (auditoria/), com hierarquia: resumo, filtros e blocos
+                ov.innerHTML = `<div class="nit-diario-caixa" role="dialog" aria-label="Linha do tempo de hoje">
+                    <div class="nit-diario-topo"><div class="ndt-tit"><strong>LINHA DO TEMPO DE HOJE</strong><span class="ndt-sub"></span></div>
                     <button type="button" class="nd-btn nd-btn-peq" data-fechar>FECHAR</button></div>
+                    <div class="ndt-resumo"></div><div class="ndt-filtros" role="group" aria-label="Filtrar"></div>
                     <div class="nit-diario-lista">Carregando…</div></div>`;
                 document.body.appendChild(ov);
-                ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-fechar]')) this.fechar(); });
+                ov.addEventListener('click', e => {
+                    if (e.target === ov || e.target.closest('[data-fechar]')) return this.fechar();
+                    const f = e.target.closest('[data-filtro]'); if (f) { this._filtro = f.dataset.filtro; this._mostrar(this._ultimo || {}); }
+                });
             }
             ov.classList.add('visivel');
             const db = NitFirebase.db;
@@ -711,21 +716,119 @@
             document.getElementById('nit-diario')?.classList.remove('visivel');
             if (this._ref && this._cb) this._ref.off('value', this._cb);
         },
+        // Cada linha gravada ("＋ Novos pendentes: 105, 530") vira { tipo, rótulo, itens:[{c, d}] }
+        _TIPOS: [
+            [/^＋ Novos pendentes: /,              'novo',   'Novos pendentes'],
+            [/^＋ Novos já normalizados: /,        'novoN',  'Já chegaram normalizados'],
+            [/^✓ Normalizaram: /,                  'norm',   'Normalizaram'],
+            [/^↺ Apagaram de novo: /,              'reinc',  'Apagaram de novo'],
+            [/^⟲ Início corrigido pela fonte: /,   'corr',   'Início corrigido pela fonte'],
+            [/^⟲ Fim corrigido pela fonte: /,      'corr',   'Fim corrigido pela fonte'],
+            [/^↩ Voltaram ao painel[^:]*: /,       'norm',   'Voltaram ao painel'],
+            [/^↪ Pendências de ontem que continuam hoje: /, 'info', 'Pendências de ontem que continuam'],
+            [/^⚠ Erros da fonte: /,                'erro',   'Erro da fonte'],
+            [/^ℹ Resolvidos: /,                    'resol',  'Erro resolvido'],
+            [/^ℹ Hora lida com correção: /,        'leit',   'Hora lida com correção'],
+            [/^ℹ Código lido com correção: /,      'leit',   'Código lido com correção'],
+        ],
+        _ICONE: { novo: '+', novoN: '+', norm: '✓', reinc: '↺', corr: '⟲', info: 'i', erro: '!', resol: '✓', outro: '·' },
+        _ler(linha) {
+            for (const [re, tipo, rotulo] of this._TIPOS) {
+                if (!re.test(linha)) continue;
+                const resto = linha.replace(re, '');
+                const partes = resto.includes(' · ') || /\(/.test(resto) ? resto.split(' · ') : resto.split(', ');
+                const itens = partes.map(x => x.trim()).filter(Boolean).map(x => {
+                    const m = /^"?(\w+)"?\s*(.*)$/.exec(x) || [];
+                    let d = (m[2] || '').replace(/^\((.*)\)$/, '$1');
+                    if (tipo === 'leit' && /^→/.test(d)) d = `"${m[1]}" ${d}`;
+                    return { c: tipo === 'leit' && /^→/.test(m[2] || '') ? (m[2] || '').replace(/^→\s*/, '') : m[1] || x, d };
+                });
+                return { tipo, rotulo, itens, texto: linha };
+            }
+            return { tipo: 'outro', rotulo: '', itens: [], texto: linha };
+        },
+        _totais(t) { const m = /(\d+) pendentes? · (\d+) normalizad/.exec(t || ''); return m ? { p: +m[1], n: +m[2] } : null; },
         _mostrar(obj) {
-            const lista = document.querySelector('#nit-diario .nit-diario-lista');
+            this._ultimo = obj;
+            const ov = document.getElementById('nit-diario');
+            const lista = ov?.querySelector('.nit-diario-lista');
             if (!lista) return;
-            const es = Object.values(obj).filter(e => e && e.ts).sort((a, b) => b.ts - a.ts);
+            const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+            const asc = Object.values(obj).filter(e => e && e.ts).sort((a, b) => a.ts - b.ts);
+            // prepara: grupos, deltas e marcas para os filtros
+            let ant = null;
+            const es = asc.map(e => {
+                const x = { ...e, grupos: (e.linhas || []).map(l => this._ler(l)) };
+                if (e.tipo === 'processamento') { const t = this._totais(e.totais); x.t = t; x.delta = t && ant ? { p: t.p - ant.p, n: t.n - ant.n } : null; if (t) ant = t; }
+                x.erros = x.grupos.some(g => g.tipo === 'erro');
+                x.correcoes = x.grupos.some(g => g.tipo === 'corr' || g.tipo === 'leit');
+                return x;
+            }).reverse();
+            const filtro = this._filtro || 'tudo';
+            const passa = x => filtro === 'tudo' || (filtro === 'erros' && x.erros) || (filtro === 'correcoes' && x.correcoes) || (filtro === 'operador' && x.tipo !== 'processamento');
+            // topo e resumo
+            const procs = es.filter(x => x.tipo === 'processamento'), acoes = es.filter(x => x.tipo !== 'processamento');
+            ov.querySelector('.ndt-sub').textContent = `${NitData.hoje().slice(0, 5)} · ${procs.length} relatório${procs.length === 1 ? '' : 's'} · ${acoes.length} ${acoes.length === 1 ? 'ação' : 'ações'} do operador`;
+            const resumo = ov.querySelector('.ndt-resumo'); resumo.replaceChildren();
+            const tile = (rot, ...filhos) => { const t = el('div', 'ndt-tile'); t.append(el('div', 'ndt-tile-rot', rot)); const v = el('div', 'ndt-tile-val'); v.append(...filhos); t.append(v); resumo.append(t); };
+            const u = procs[0];
+            if (u?.t) tile('Agora', el('b', 'ndt-p', String(u.t.p)), el('span', '', u.t.p === 1 ? ' pendente  ' : ' pendentes  '), el('b', 'ndt-n', String(u.t.n)), el('span', '', u.t.n === 1 ? ' normalizado' : ' normalizados'));
+            if (u) tile('Último relatório', el('b', 'ndt-mono', this._hhmm(u.ts)), el('span', '', ` · ${u.por}`));
+            const nErros = es.reduce((s, x) => s + x.grupos.filter(g => g.tipo === 'erro').reduce((a, g) => a + g.itens.length, 0), 0);
+            tile('Erros da fonte hoje', el('b', nErros ? 'ndt-a' : '', String(nErros)), el('span', '', nErros === 1 ? ' erro' : ' erros'));
+            const filtros = ov.querySelector('.ndt-filtros'); filtros.replaceChildren();
+            for (const [id, rot, n] of [['tudo', 'Tudo', es.length], ['erros', 'Erros da fonte', es.filter(x => x.erros).length], ['correcoes', 'Correções', es.filter(x => x.correcoes).length], ['operador', 'Ações do operador', acoes.length]]) {
+                const b = el('button', 'ndt-filtro' + (id === filtro ? ' ativo' : ''), `${rot} `); b.type = 'button'; b.dataset.filtro = id; b.setAttribute('aria-pressed', String(id === filtro));
+                b.append(el('span', 'ndt-qtd', String(n))); filtros.append(b);
+            }
+            // lista
             lista.replaceChildren();
+            const vis = es.filter(passa);
             if (!es.length) { lista.textContent = 'Nada registrado hoje.'; return; }
-            for (const e of es) {
-                const d = document.createElement('div');
-                d.className = `nit-diario-item nit-diario-${e.tipo}`;
-                const cab = document.createElement('div');
-                cab.className = 'nit-diario-cab';
-                cab.textContent = `${this._hhmm(e.ts)} · ${e.por}` + (e.tipo === 'processamento' ? ` processou o relatório · ${e.totais || ''}` : '');
-                d.append(cab);
-                for (const l of e.linhas || []) { const p = document.createElement('div'); p.className = 'nit-diario-linha'; p.textContent = l; d.append(p); }
-                lista.append(d);
+            if (!vis.length) { lista.append(el('div', 'ndt-vazio', 'Nada neste filtro hoje.')); return; }
+            for (const x of vis) {
+                const proc = x.tipo === 'processamento';
+                const item = el('div', `nit-diario-item nit-diario-${x.tipo}${x.erros ? ' ndt-atencao' : ''}`);
+                const hora = el('div', 'ndt-hora'); hora.append(el('b', 'ndt-mono', this._hhmm(x.ts)), el('span', 'ndt-tag', proc ? 'RELATÓRIO' : 'AÇÃO'));
+                const corpo = el('div', 'ndt-corpo');
+                // texto corrido (leitores de tela, cópia e as baterias): o mesmo de antes
+                corpo.append(el('span', 'nit-diario-cab ndt-sr', `${this._hhmm(x.ts)} · ${x.por}` + (proc ? ` processou o relatório · ${x.totais || ''}` : '')));
+                if (!proc) {
+                    const a = el('div', 'ndt-acao');
+                    a.append(el('span', 'ndt-quem', (x.por || '?').split(/\s+/).map(p => p[0]).join('').slice(0, 2).toUpperCase()));
+                    const tx = el('div', 'ndt-acao-tx'); for (const g of x.grupos) tx.append(el('div', 'nit-diario-linha ndt-acao-l', g.texto));
+                    tx.append(el('div', 'ndt-acao-por', x.por)); a.append(tx); corpo.append(a);
+                } else {
+                    const topo = el('div', 'ndt-btopo');
+                    if (x.t) {
+                        const tt = el('div', 'ndt-tot'); tt.append(el('b', 'ndt-p', String(x.t.p)), el('span', '', x.t.p === 1 ? ' pendente ' : ' pendentes '), el('b', 'ndt-n', String(x.t.n)), el('span', '', x.t.n === 1 ? ' normalizado' : ' normalizados'));
+                        if (x.delta) for (const [k, s1, s2] of [['p', 'pendente', 'pendentes'], ['n', 'normalizado', 'normalizados']]) {
+                            const v = x.delta[k]; if (!v) continue;
+                            tt.append(el('span', `ndt-delta ndt-delta-${k}${v > 0 ? '' : ' menos'}`, `${v > 0 ? '+' : '−'}${Math.abs(v)} ${Math.abs(v) === 1 ? s1 : s2}`));
+                        }
+                        topo.append(tt);
+                    }
+                    topo.append(el('span', 'ndt-por', x.por)); corpo.append(topo);
+                    const gs = el('div', 'ndt-grupos');
+                    const leit = x.grupos.filter(g => g.tipo === 'leit');
+                    for (const g of x.grupos.filter(g => g.tipo !== 'leit')) {
+                        const row = el('div', `ndt-g ndt-${g.tipo}`);
+                        row.append(el('span', 'ndt-ico', this._ICONE[g.tipo] || '·'));
+                        if (g.tipo === 'outro') { row.append(el('span', 'nit-diario-linha ndt-livre', g.texto)); gs.append(row); continue; }
+                        row.append(el('span', 'ndt-rot', g.rotulo));
+                        const chips = el('div', 'ndt-chips');
+                        for (const it of g.itens) { const c = el('span', 'ndt-chip'); c.append(el('b', 'ndt-mono', it.c)); if (it.d) c.append(el('span', 'ndt-chip-d', it.d)); chips.append(c); }
+                        row.append(chips, el('span', 'nit-diario-linha ndt-sr', g.texto)); gs.append(row);
+                    }
+                    if (leit.length) {
+                        const det = el('details', 'ndt-leit'); const n = leit.reduce((s, g) => s + g.itens.length, 0);
+                        det.append(el('summary', '', `${n} ${n === 1 ? 'leitura corrigida' : 'leituras corrigidas'} sem incomodar o operador`));
+                        for (const g of leit) det.append(el('div', 'nit-diario-linha ndt-leit-l', g.texto));
+                        gs.append(det);
+                    }
+                    corpo.append(gs);
+                }
+                item.append(hora, corpo); lista.append(item);
             }
         },
         inicializar() { this._botao(); },
@@ -1299,6 +1402,8 @@ const NitData = {
             .replace(/["*\t]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
+        // 13.2.1 (24/10): rótulo vazio ("Início:" sem hora) não é observação — antes ia para o card, o banco e a planilha
+        for (let k = 0; k < 2; k++) obsInline = obsInline.replace(/(?:^|\s)(?:In[ií]cio|Fim)\s*:(?=\s*(?:$|In[ií]cio\s*:|Fim\s*:))/gi, '').trim();
         // Descarta se for só pontuação ou muito curto sem valor semântico
         if (/^[.\-–—\s"]+$/.test(obsInline) || obsInline.length < 3) obsInline = '';
     }
@@ -1570,7 +1675,7 @@ const NitData = {
             // já gravado. Se o motor aplicou tudo, toda linha volta como MANTER (ou
             // como inconsistência conhecida). Qualquer outra decisão = não aplicada.
             const pos = this._classificarLinhas(esperados, this._cardsParaClassificacao());
-            const r = { naoAplicadas: [], duasAbertas: [], sequencia: [], legado: [], semInicio: [], sobras: [], estado: [], escondidos: [] };
+            const r = { naoAplicadas: [], duasAbertas: [], sequencia: [], legado: [], semInicio: [], sobras: [], estado: [], escondidos: [], repetidas: [] };
             const representantes = new Set();
             const legadoVisto = new Set();
 
@@ -1584,6 +1689,7 @@ const NitData = {
                     return;
                 }
                 if (/^(CRIAR_|NORMALIZAR$|RETIFICAR)/.test(l.decisao) && l.gravidade !== 'AMBIGUO') { r.naoAplicadas.push({ ev, l }); return; }
+                if (l.repetida) { r.repetidas.push({ ev }); return; }
                 if (l.motivo === 'ATIVIDADE_INCOMUM') r.estado.push({ ev, card, esperadoNorm: false });
                 else if (l.decisao === 'GUARDAR_NO_CARD' && l.gravidade === 'ALERTA') r.duasAbertas.push({ ev, card });
                 else if (l.gravidade === 'AMBIGUO') r.sequencia.push({ ev, card, l });
@@ -1721,6 +1827,13 @@ const NitData = {
                 add({ msg: 'NIT-13', nivel: 'ambar', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-13|${cod}`,
                     titulo: `⚠ ${cod} HORÁRIO NÃO FECHA`, linha2: `${l2}.`, pergunta: `O ${cod} diz ${pq}. Qual é o certo?` });
             }
+            // NIT-36 (13.2.1, 24/10): a mesma linha veio repetida — o NIT contou uma vez; avisa por que o painel difere do cabeçalho
+            const nRep = {};
+            r.repetidas.forEach(({ ev }) => { nRep[ev.codigo] = (nRep[ev.codigo] || 1) + 1; });
+            for (const [cod, n] of Object.entries(nRep))
+                add({ msg: 'NIT-36', nivel: 'azul', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-36|${cod}`,
+                    titulo: `ℹ ${cod} VEIO REPETIDO NO RELATÓRIO`,
+                    linha2: `A mesma linha veio ${n} vezes. O NIT contou uma vez só: por isso o painel tem ${n - 1} a menos que o cabeçalho. Nada a fazer.` });
             // NIT-14: sem hora de início
             for (const { ev } of r.semInicio) add({ msg: 'NIT-14', nivel: 'ambar', codigo: ev.codigo, cardId: cardDoCodigo(ev.codigo), chave: `NIT-14|${ev.codigo}`,
                 ...(ev.inicioIlegivel
@@ -1890,7 +2003,11 @@ const NitData = {
                     // se um normalizado do semáforo ficou sem a própria linha, é a linha dele que perdeu a hora.
                     //  1º normalizado de MESMO fim · 2º pendente sem início · 3º normalizado provisório (sem início)
                     //  · 4º o único normalizado sem linha (linha aberta → regra do normalizado que volta sem fim).
-                    const semLinha = norm.filter(c => !atualDe.has(c) && c.atualId && !linhas.some(x => x.id && x.id === c.atualId));
+                    // (normalizado que tem uma linha COM início esperando por ele — início corrigido, passo 2 — fica para ela)
+                    const reservado = c => [...livres].some(x => x.id && x.tIni != null && (x.fechada
+                        ? x.tFim != null && c.tFim != null && (x.tFim === c.tFim || (x.tIni <= c.tFim && (c.tIni == null || x.tFim >= c.tIni)))
+                        : c.tFim != null && x.tIni <= c.tFim));
+                    const semLinha = norm.filter(c => !atualDe.has(c) && c.atualId && !linhas.some(x => x.id && x.id === c.atualId) && !reservado(c));
                     c = (l.fechada && l.tFim != null && semLinha.find(c => c.tFim === l.tFim))
                         || pend.find(c => !c.atualId && !atualDe.has(c))
                         // (provisório que tem uma linha COM início esperando por ele no passo 2 fica para ela)
@@ -2217,7 +2334,8 @@ const NitData = {
                     continue;
                 }
                 if (dados.reincidente) st.reinc.push(ev.codigo);
-                const el = this.criarElementoCard(`card-${AppState.cardIdCounter++}`, dados);
+                // 13.2.1 (24/10): o card já nasce sabendo a coluna (sem isso mostrava o ⏳ do início até recarregar)
+                const el = this.criarElementoCard(`card-${AppState.cardIdCounter++}`, status === 'NORMALIZADO' ? { ...dados, coluna: 'coluna-normalizados' } : dados);
                 this._colocarCardNaColuna(el, status);
                 if (status === 'NORMALIZADO') this.ultimoLoteNormalizado.push(el.id);
                 if (lote) lotePayload[ev.eventoId] = this._payloadFirebase(dados, status);
@@ -2496,7 +2614,8 @@ const NitData = {
                                     || (cardData.data_fim ? `${cardData.data_fim}${cardData.hora_fim ? ' ' + cardData.hora_fim : ''}` : '')
                                     || '',
                     // coluna lida do dataset em tempo de render (pode ter mudado desde cardData)
-                    coluna:       card.dataset.coluna   || cardData.coluna           || '',
+                    // 13.2.1 (24/10): card que já nasce normalizado ainda não tem coluna no dataset → mostrava o ⏳ do início
+                    coluna:       (card.closest('#coluna-normalizados') ? 'coluna-normalizados' : '') || card.dataset.coluna || cardData.coluna || '',
                     // Agendamento de rendição
                     agendamentohora:   cardData.agendamento?.horaAgendada || card.dataset.agendamentohora   || '',
                     agendamentoequipe: cardData.agendamento?.equipe        || card.dataset.agendamentoequipe || '',
