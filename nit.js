@@ -778,7 +778,10 @@
             const nErros = es.reduce((s, x) => s + x.grupos.filter(g => g.tipo === 'erro').reduce((a, g) => a + g.itens.length, 0), 0);
             tile('Erros da fonte hoje', el('b', nErros ? 'ndt-a' : '', String(nErros)), el('span', '', nErros === 1 ? ' erro' : ' erros'));
             const filtros = ov.querySelector('.ndt-filtros'); filtros.replaceChildren();
-            for (const [id, rot, n] of [['tudo', 'Tudo', es.length], ['erros', 'Erros da fonte', es.filter(x => x.erros).length], ['correcoes', 'Correções', es.filter(x => x.correcoes).length], ['operador', 'Ações do operador', acoes.length]]) {
+            // 13.2.1 (24/10, homologação): o filtro mostra só as LINHAS daquele tipo (antes só escondia blocos — com um
+            // relatório só, clicar parecia não fazer nada). O número é de itens, não de blocos.
+            const nItens = tipos => es.reduce((s, x) => s + x.grupos.filter(g => tipos.includes(g.tipo)).reduce((a, g) => a + Math.max(1, g.itens.length), 0), 0);
+            for (const [id, rot, n] of [['tudo', 'Tudo', es.length], ['erros', 'Erros da fonte', nItens(['erro'])], ['correcoes', 'Correções', nItens(['corr', 'leit'])], ['operador', 'Ações do operador', acoes.length]]) {
                 const b = el('button', 'ndt-filtro' + (id === filtro ? ' ativo' : ''), `${rot} `); b.type = 'button'; b.dataset.filtro = id; b.setAttribute('aria-pressed', String(id === filtro));
                 b.append(el('span', 'ndt-qtd', String(n))); filtros.append(b);
             }
@@ -811,8 +814,9 @@
                     }
                     topo.append(el('span', 'ndt-por', x.por)); corpo.append(topo);
                     const gs = el('div', 'ndt-grupos');
-                    const leit = x.grupos.filter(g => g.tipo === 'leit');
-                    for (const g of x.grupos.filter(g => g.tipo !== 'leit')) {
+                    const mostra = g => filtro === 'erros' ? ['erro', 'resol'].includes(g.tipo) : filtro === 'correcoes' ? ['corr', 'leit'].includes(g.tipo) : true;
+                    const leit = x.grupos.filter(g => g.tipo === 'leit' && mostra(g));
+                    for (const g of x.grupos.filter(g => g.tipo !== 'leit' && mostra(g))) {
                         const row = el('div', `ndt-g ndt-${g.tipo}`);
                         row.append(el('span', 'ndt-ico', this._ICONE[g.tipo] || '·'));
                         if (g.tipo === 'outro') { row.append(el('span', 'nit-diario-linha ndt-livre', g.texto)); gs.append(row); continue; }
@@ -823,6 +827,7 @@
                     }
                     if (leit.length) {
                         const det = el('details', 'ndt-leit'); const n = leit.reduce((s, g) => s + g.itens.length, 0);
+                        if (filtro === 'correcoes') det.open = true;
                         det.append(el('summary', '', `Correções de digitação (${n})`));
                         for (const g of leit) det.append(el('div', 'nit-diario-linha ndt-leit-l', g.texto));
                         gs.append(det);
