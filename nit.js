@@ -416,6 +416,7 @@
                 c.dataset.msg = i.msg; c.dataset.codigo = i.codigo; c.dataset.chave = i.chave;
                 c.append(mk('div', 'nd-t', i.titulo));
                 if (i.linha2 && !chip) c.append(mk('div', 'nd-l2', i.linha2));
+                if (i.linha3 && !chip) c.append(mk('div', 'nd-l2 nd-l3', i.linha3));
                 const outra = !chip && this._outraPendencia(i);
                 if (outra) c.append(mk('div', 'nd-l2 nd-l3', `Já existe outra pendência do ${i.codigo}, a das ${this._horaCurta(outra.dataset.inicio)}. Por isso não dá para reabrir esta.`));
                 if (em) c.append(mk('div', 'nd-estado', `⏳ PERGUNTADO ${this._hhmm(em)}`));
@@ -822,7 +823,7 @@
                     }
                     if (leit.length) {
                         const det = el('details', 'ndt-leit'); const n = leit.reduce((s, g) => s + g.itens.length, 0);
-                        det.append(el('summary', '', `${n} ${n === 1 ? 'leitura corrigida' : 'leituras corrigidas'} sem incomodar o operador`));
+                        det.append(el('summary', '', `Correções de digitação (${n})`));
                         for (const g of leit) det.append(el('div', 'nit-diario-linha ndt-leit-l', g.texto));
                         gs.append(det);
                     }
@@ -1761,15 +1762,18 @@ const NitData = {
                 if (D._ehNorm(card)) {
                     const fim = hm(`${card.dataset.data_fim || ''} ${card.dataset.hora_fim || ''}`.trim() || card.dataset.fim);
                     add({ msg: 'NIT-10', nivel: 'ambar', codigo: cod, cardId: id, chave: `NIT-10|${cod}|${id}`, sigBase: `NIT-10|${id}|N`,
-                        titulo: `⚠ ${cod} NÃO VEIO NO RELATÓRIO`, linha2: `Normalizou às ${fim}. Sumiu no relatório das ${hora}.`,
-                        botoes: [['MANTER', 'NORMALIZADO'], ['TIRAR', 'EXCLUIR']],
+                        // 13.2.1 (24/10): o quê → o que o NIT fez → o que decidir (linguagem simples; ISA-18.2: causa, consequência, ação)
+                        titulo: `⚠ ${cod} SAIU DO RELATÓRIO`, linha2: `Normalizou às ${fim}. No relatório das ${hora} não aparece mais.`,
+                        linha3: 'Continua normalizado no painel até você decidir.',
+                        botoes: [['MANTER', 'CONTINUA NORMALIZADO'], ['TIRAR', 'EXCLUIR']],
                         pergunta: `O ${cod} (normalizado às ${fim}) não veio no relatório das ${hora}. Ainda vale?` });
                 } else {
                     const ini = hm(card.dataset.inicio);
                     add({ msg: 'NIT-10', nivel: 'ambar', codigo: cod, cardId: id, chave: `NIT-10|${cod}|${id}`, sigBase: `NIT-10|${id}|${ini}`,
-                        titulo: `⚠ ${cod} NÃO VEIO NO RELATÓRIO`,
-                        linha2: ini ? `Pendente desde ${ini}. Sumiu no relatório das ${hora}.` : `Pendente sem hora de início. Sumiu no relatório das ${hora}.`,
-                        botoes: [['MANTER', 'PENDENTE'], ['NORMALIZOU', 'NORMALIZOU'], ['TIRAR', 'EXCLUIR']],
+                        titulo: `⚠ ${cod} SAIU DO RELATÓRIO`,
+                        linha2: `${ini ? `Pendente desde ${ini}` : 'Pendente sem hora de início'}. No relatório das ${hora} não aparece mais, nem como normalizado.`,
+                        linha3: 'Continua pendente no painel até você decidir.',
+                        botoes: [['MANTER', 'CONTINUA PENDENTE'], ['NORMALIZOU', 'NORMALIZOU'], ['TIRAR', 'EXCLUIR']],
                         pergunta: `O ${cod} (pendente desde ${ini || 'hora não informada'}) não veio no relatório das ${hora}. Normalizou?` });
                 }
             }
