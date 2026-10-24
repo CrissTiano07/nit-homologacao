@@ -804,7 +804,9 @@
                     tx.append(el('div', 'ndt-acao-por', x.por)); a.append(tx); corpo.append(a);
                 } else {
                     const topo = el('div', 'ndt-btopo');
-                    if (x.t) {
+                    // 13.2.1 (24/10, homologação): num filtro, os totais daquele momento confundiam com o "agora" (o relatório mais
+                    // novo pode estar escondido pelo filtro) → no filtro mostra só as linhas; os totais ficam no "Tudo".
+                    if (x.t && filtro === 'tudo') {
                         const tt = el('div', 'ndt-tot'); tt.append(el('b', 'ndt-p', String(x.t.p)), el('span', '', x.t.p === 1 ? ' pendente ' : ' pendentes '), el('b', 'ndt-n', String(x.t.n)), el('span', '', x.t.n === 1 ? ' normalizado' : ' normalizados'));
                         if (x.delta) for (const [k, s1, s2] of [['p', 'pendente', 'pendentes'], ['n', 'normalizado', 'normalizados']]) {
                             const v = x.delta[k]; if (!v) continue;
@@ -829,7 +831,11 @@
                         const det = el('details', 'ndt-leit'); const n = leit.reduce((s, g) => s + g.itens.length, 0);
                         if (filtro === 'correcoes') det.open = true;
                         det.append(el('summary', '', `Correções de digitação (${n})`));
-                        for (const g of leit) det.append(el('div', 'nit-diario-linha ndt-leit-l', g.texto));
+                        // cada correção com o código em destaque (como nos outros grupos); o texto corrido fica para leitores de tela
+                        const chips = el('div', 'ndt-chips ndt-leit-chips');
+                        for (const g of leit) for (const it of g.itens) { const c = el('span', 'ndt-chip'); c.append(el('b', 'ndt-mono', it.c)); if (it.d) c.append(el('span', 'ndt-chip-d', it.d)); chips.append(c); }
+                        det.append(chips);
+                        for (const g of leit) det.append(el('div', 'nit-diario-linha ndt-sr', g.texto));
                         gs.append(det);
                     }
                     corpo.append(gs);
