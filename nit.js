@@ -1827,13 +1827,10 @@ const NitData = {
                 add({ msg: 'NIT-13', nivel: 'ambar', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-13|${cod}`,
                     titulo: `⚠ ${cod} HORÁRIO NÃO FECHA`, linha2: `${l2}.`, pergunta: `O ${cod} diz ${pq}. Qual é o certo?` });
             }
-            // NIT-36 (13.2.1, 24/10): a mesma linha veio repetida — o NIT contou uma vez; avisa por que o painel difere do cabeçalho
+            // NIT-36 (13.2.1, 24/10): a mesma linha veio repetida — o NIT contou uma vez. Nada a fazer, então NÃO vira card
+            // no painel (pedido do Cristiano): só um aviso passageiro e o registro na LINHA DO TEMPO (erros da fonte).
             const nRep = {};
             r.repetidas.forEach(({ ev }) => { nRep[ev.codigo] = (nRep[ev.codigo] || 1) + 1; });
-            for (const [cod, n] of Object.entries(nRep))
-                add({ msg: 'NIT-36', nivel: 'azul', codigo: cod, cardId: cardDoCodigo(cod), chave: `NIT-36|${cod}`,
-                    titulo: `ℹ ${cod} VEIO REPETIDO NO RELATÓRIO`,
-                    linha2: `A mesma linha veio ${n} vezes. O NIT contou uma vez só: por isso o painel tem ${n - 1} a menos que o cabeçalho. Nada a fazer.` });
             // NIT-14: sem hora de início
             for (const { ev } of r.semInicio) add({ msg: 'NIT-14', nivel: 'ambar', codigo: ev.codigo, cardId: cardDoCodigo(ev.codigo), chave: `NIT-14|${ev.codigo}`,
                 ...(ev.inicioIlegivel
@@ -1850,10 +1847,13 @@ const NitData = {
                 const n = [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${cod}"]`)].filter(c => c.dataset.datareferencia === dataRel).length;
                 showToast(`ℹ ${cod} APAGOU DE NOVO. ${n}ª vez hoje.`, 'info', 8000);
             }
+            // NIT-36: aviso passageiro (some sozinho) — explica por que o painel tem menos que o cabeçalho
+            for (const [cod, n] of Object.entries(nRep)) showToast(`ℹ ${cod} VEIO ${n} VEZES NO RELATÓRIO. Contado uma vez só.`, 'info', 8000);
             // 📜 diário do processamento
             try {
                 const nomes = { 'NIT-10': 'não veio', 'NIT-11': 'voltou atrás', 'NIT-12': 'veio 2 vezes', 'NIT-13': 'horário não fecha', 'NIT-14': 'sem hora de início', 'NIT-16': 'tem 2 cards', 'NIT-35': 'não entrou no painel' };
                 const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${/ILEGÍVEL/.test(i.titulo || '') ? 'hora de início ilegível' : nomes[i.msg]}`);
+                for (const [cod, n] of Object.entries(nRep)) novosItens.push(`${cod} veio ${n} vezes (contado 1)`);
                 NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [], codigosLidos: Semaforo._codigosLidos || [] });
             } catch (e) { /* não bloqueia */ }
 
