@@ -862,10 +862,10 @@
                 .then(s => { this.ehAdmin = s.val() === true; if (this.ehAdmin) this._botoes(); })
                 .catch(() => { this.ehAdmin = false; });   // sem permissão de leitura = não é ADM
         },
-        _botoes() {
+        _botoes(tentativa = 0) {
             if (document.getElementById('nit-admin-limpar')) return;
             const ref = document.getElementById('nit-diario-btn') || document.getElementById('nit-gravacao-status');
-            if (!ref) return;
+            if (!ref) { if (tentativa < 20) setTimeout(() => this._botoes(tentativa + 1), 500); return; }   // topo ainda montando
             const mk = (id, txt, tit, fn) => { const b = document.createElement('button'); b.id = id; b.type = 'button';
                 b.className = 'nd-btn nd-btn-peq nit-admin-btn'; b.textContent = txt; b.title = tit; b.addEventListener('click', fn); return b; };
             const limpar = mk('nit-admin-limpar', '🧹 LIMPAR PAINEL', 'ADM: apaga todos os cards e avisos (fica uma cópia)', () => this.limpar());

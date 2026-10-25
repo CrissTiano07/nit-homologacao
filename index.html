@@ -16,7 +16,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             window.NIT_API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
                 ? 'http://127.0.0.1:8000'
-                : 'https://backend-desligado-na-homologacao.invalid';
+                : 'https://nit-backend-production-f09b.up.railway.app';
             window._NIT_KEY_CACHE = null;
 
             window.getNITKey = async function() {
@@ -34,27 +34,25 @@
             };
 
             const firebaseConfig = {
-                apiKey:        "AIzaSyDEAxzkLdtdTINDbu5b6WLvBDuE_FlQhus",
-                authDomain:    "nit-homologacao.firebaseapp.com",
-                databaseURL:   "https://nit-homologacao-default-rtdb.firebaseio.com/",
-                projectId:     "nit-homologacao",
-                storageBucket: "nit-homologacao.firebasestorage.app",
+                apiKey:        "AIzaSyCWAGfmCr-pHr0asIk_Sfz1WbajIEhiZn0",
+                authDomain:    "nit-operacional.firebaseapp.com",
+                databaseURL:   "https://nit-operacional-default-rtdb.firebaseio.com/",
+                projectId:     "nit-operacional",
+                storageBucket: "nit-operacional.appspot.com",
             };
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             window.db = firebase.database();
         });
     </script>
 
-    <title>NIT — HOMOLOGAÇÃO (teste)</title>
+    <title>NIT — Painel de Gestão Integrada v13.0</title>
     <link rel="icon" href="data:,">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="nit.css?v=132homolog20">
+        <link rel="stylesheet" href="nit.css?v=20261024-1322">
     <link rel="stylesheet" href="reboques.css?v=20260709">
 
 </head>
 <body data-theme="dark">
-<div style="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#b91c1c;color:#fff;text-align:center;font:700 13px/1.6 sans-serif;padding:3px;pointer-events:none">HOMOLOGAÇÃO — banco de teste (nit-homologacao). Não usar na operação.</div>
-
 
     <!-- LOGIN ────────────────────────────────────────────────────────── -->
     <!-- Backdrop sidebar (mobile/tablet) -->
@@ -942,7 +940,7 @@
 
     <!-- APP LOGIC ──────────────────────────────────────────────────────── -->
     
-    <script src="nit.js?v=132homolog20"></script>
+    <script src="nit.js?v=20261024-1322"></script>
     <script src="reboques.js?v=20260709"></script>
 
 </body>
