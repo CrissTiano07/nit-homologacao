@@ -941,26 +941,48 @@
     };
     window.NitAdmin = NitAdmin;
 
-    // ── 14.0 (lab): RELATÓRIO DA PLANILHA DO CTA ─────────────────────────────
+    // ── 14.0: RELATÓRIO DA PLANILHA DO CTA ───────────────────────────────────
     // Um script no espelho da planilha do CTA monta, a cada minuto, o mesmo texto do relatório
-    // e grava em fonte_planilha/. Aqui só aparece um botão: clicar processa esse texto pelo
-    // caminho de sempre (o mesmo de colar o relatório). Sem o nó, o botão não aparece.
+    // e grava em fonte_planilha/. O NIT processa esse texto sozinho, pelo caminho de sempre
+    // (o mesmo de colar). Só UMA janela processa cada versão (meta/planilha_processada).
+    // Se a automação parar, uma faixa vermelha manda colar o relatório do WhatsApp.
+    // Sem o nó fonte_planilha, nada aparece.
     const NitPlanilha = {
-        PARADA_MIN: 5,          // sem verificação há mais que isso = script parado
-        _c: null, _verif: 0, _timer: null,
+        AUTO: true,             // 14.0 homolog2: processa sozinho
+        PARADA_MIN: 3,          // sem verificação há mais que isso = automação parada
+        _c: null, _verif: 0, _offset: 0, _proc: null, _parada: null, _tentando: false,
+        _janela: Math.random().toString(36).slice(2, 10),
         iniciar() {
             const db = NitFirebase.db; if (!db || this._ligado) return; this._ligado = true;
-            db.ref('fonte_planilha/conteudo').on('value', s => { this._c = s.val(); this._render(); }, () => {});
-            db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); }, () => {});
-            this._timer = setInterval(() => this._render(), 30000);
+            db.ref('.info/serverTimeOffset').on('value', s => { this._offset = s.val() || 0; }, () => {});
+            db.ref('fonte_planilha/conteudo').on('value', s => { this._c = s.val(); this._render(); this._talvezProcessar(); }, () => {});
+            db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); this._talvezProcessar(); }, () => {});
+            db.ref('meta/planilha_processada').on('value', s => { this._proc = s.val(); this._render(); }, () => {});
+            setInterval(() => { this._render(); this._talvezProcessar(); }, 20000);
         },
+        _agora() { return Date.now() + (this._offset || 0); },
+        _ultimo() { return Math.max(this._verif || 0, (this._c && this._c.geradoEm) || 0); },
+        _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
+        estaParada() { return !!(this._c && this._c.texto) && this._min() >= this.PARADA_MIN; },
+        _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
         _botao() {
             let b = document.getElementById('nit-planilha-btn'); if (b) return b;
             const ref = document.getElementById('btn-processar'); if (!ref) return null;
             b = document.createElement('button'); b.type = 'button'; b.id = 'nit-planilha-btn';
             b.className = 'sb-btn-processar-full nit-planilha-btn';
-            b.addEventListener('click', () => this.processar());
+            b.addEventListener('click', () => this.processar('mão'));
             ref.insertAdjacentElement('beforebegin', b); return b;
+        },
+        _faixa(mostrar, texto) {
+            let f = document.getElementById('nit-planilha-faixa');
+            if (!mostrar) { if (f) f.remove(); document.body.classList.remove('nit-planilha-parada'); return; }
+            if (!f) {
+                const tab = document.getElementById('tab-semaforo'); if (!tab) return;
+                f = document.createElement('div'); f.id = 'nit-planilha-faixa'; f.setAttribute('role', 'alert');
+                tab.insertAdjacentElement('afterbegin', f);
+            }
+            if (f.textContent !== texto) f.textContent = texto;
+            document.body.classList.add('nit-planilha-parada');
         },
         // o que a planilha diz e o painel ainda não mostra
         novidades() {
@@ -972,25 +994,72 @@
                 return !!x.f !== !!c.closest('#coluna-normalizados');
             }).length;
         },
+        // por que não dá para processar sozinho (null = pode)
+        _impedimento() {
+            const c = this._c;
+            if (!c || !c.texto) return 'sem relatório';
+            if (c.dataReferencia && c.dataReferencia !== NitData.hoje()) return 'data diferente de hoje';
+            if ((c.itens || []).some(x => /^[A-Z0-9]$/.test(x.c))) return 'código de 1 dígito';
+            const m = document.getElementById('modal-confirmar-generico');
+            if (m && m.classList.contains('visible')) return 'pergunta aberta na tela';
+            const ta = document.getElementById('relatorio-bruto-input');
+            if (ta && ta.value.trim()) return 'relatório colado esperando';
+            return null;
+        },
         _render() {
-            const c = this._c, b = c && c.texto ? this._botao() : document.getElementById('nit-planilha-btn');
+            const c = this._c, tem = !!(c && c.texto);
+            const b = tem ? this._botao() : document.getElementById('nit-planilha-btn');
+            if (!tem) { if (b) b.style.display = 'none'; this._faixa(false); return; }
+            const parada = this.estaParada(), min = this._min();
+            // faixa: fato + ação, sem esperar o operador olhar o botão
+            if (parada) {
+                const desde = NitDiario._hhmm(this._ultimo());
+                this._faixa(true, `⚠ PLANILHA PAROU ÀS ${desde} · COLE O RELATÓRIO DO WHATSAPP`);
+                if (this._parada !== true) { this._parada = true; try { NitDiario.acao(`⚠ Planilha parou às ${desde}. Relatório pelo WhatsApp.`); } catch (e) {} }
+            } else {
+                this._faixa(false);
+                if (this._parada === true) { try { NitDiario.acao('✓ Planilha voltou.'); } catch (e) {} }
+                this._parada = false;
+            }
             if (!b) return;
-            if (!c || !c.texto) { b.style.display = 'none'; return; }
             b.style.display = '';
-            const min = Math.round((Date.now() - (this._verif || c.geradoEm || 0)) / 60000);
-            const parada = min > this.PARADA_MIN, n = this.novidades();
-            b.classList.toggle('tem-novidade', n > 0 && !parada);
+            const n = this.novidades(), imp = this._impedimento();
+            const precisa = !parada && n > 0 && (!this.AUTO || (imp && imp !== 'sem relatório'));
+            b.classList.toggle('tem-novidade', precisa);
             b.classList.toggle('parada', parada);
             const hh = NitDiario._hhmm(c.geradoEm);
-            b.innerHTML = `<span class="sb-label">📋 PLANILHA ${hh}${parada ? ` · ⚠ parada há ${min} min` : n ? ` · ${n} novidade${n > 1 ? 's' : ''}` : ' · em dia'}</span>`;
-            b.title = parada ? 'A planilha não é conferida há alguns minutos. Use o relatório colado.' : 'Processa o relatório montado da planilha do CTA, como se fosse colado.';
+            const estado = parada ? `⚠ parada há ${min} min`
+                : n ? (this.AUTO && !imp ? 'processando…' : `${n} novidade${n > 1 ? 's' : ''}`)
+                : (this.AUTO ? 'automático' : 'em dia');
+            b.innerHTML = `<span class="sb-label">📋 PLANILHA ${hh} · ${estado}</span>`;
+            b.title = parada ? 'A planilha parou de ser conferida. Cole o relatório do WhatsApp.'
+                : precisa && this.AUTO ? `Não processou sozinho (${imp}). Clique para processar.`
+                : 'Relatório montado da planilha do CTA. Clique para processar agora.';
         },
-        processar() {
+        async _talvezProcessar() {
+            if (!this.AUTO || this._tentando || this.estaParada()) return;
+            const c = this._c; if (!c || !c.texto || this._jaProcessada()) return;
+            if (this._impedimento()) { this._render(); return; }
+            this._tentando = true;
+            try {
+                const db = NitFirebase.db, ass = c.assinatura;
+                // só uma janela leva: quem gravar primeiro a assinatura nova processa
+                await db.ref('meta/planilha_processada').transaction(v => (v && v.assinatura === ass) ? v
+                    : { assinatura: ass, janela: this._janela, por: NitLogin.operador || 'anon', ts: Date.now() });
+                const s = await db.ref('meta/planilha_processada').once('value'), v = s.val() || {};
+                if (v.assinatura === ass && v.janela === this._janela && this._c && this._c.assinatura === ass) this.processar('auto');
+            } catch (e) { console.warn('[NIT] planilha auto', e); }
+            finally { this._tentando = false; setTimeout(() => this._render(), 1500); }
+        },
+        processar(como) {
             const c = this._c; if (!c || !c.texto) return;
             const ta = document.getElementById('relatorio-bruto-input'), go = document.getElementById('btn-processar');
             if (!ta || !go) return;
+            if (como === 'mão') {
+                try { NitFirebase.db.ref('meta/planilha_processada').set({ assinatura: c.assinatura || '', janela: this._janela, por: NitLogin.operador || 'anon', ts: Date.now() }); } catch (e) {}
+            }
             ta.value = c.texto;
-            NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado.`);
+            NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
             go.click();
             setTimeout(() => this._render(), 1500);
         },
