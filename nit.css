@@ -2225,3 +2225,5 @@
   animation: nitPlanilhaPisca 1.2s ease-in-out 3; }
 @keyframes nitPlanilhaPisca { 50% { background: #ef4444; } }
 body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; outline-offset: 2px; }
+.nit-planilha-mudou { animation: nitPlanilhaMudou 1.4s ease-in-out 4; box-shadow: 0 0 0 2px #f5b400 !important; }
+@keyframes nitPlanilhaMudou { 50% { box-shadow: 0 0 0 5px rgba(245,180,0,.55) !important; } }

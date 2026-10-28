@@ -948,14 +948,19 @@
     // Se a automação parar, uma faixa vermelha manda colar o relatório do WhatsApp.
     // Sem o nó fonte_planilha, nada aparece.
     const NitPlanilha = {
-        AUTO: true,             // 14.0 homolog2: processa sozinho
+        AUTO: true,             // 14.0: processa sozinho
         PARADA_MIN: 3,          // sem verificação há mais que isso = automação parada
-        _c: null, _verif: 0, _offset: 0, _proc: null, _parada: null, _tentando: false,
+        _c: null, _verif: 0, _offset: 0, _proc: null, _parada: null, _tentando: false, _erro: null, _fora: 0, _titulo: '',
         _janela: Math.random().toString(36).slice(2, 10),
         iniciar() {
             const db = NitFirebase.db; if (!db || this._ligado) return; this._ligado = true;
             db.ref('.info/serverTimeOffset').on('value', s => { this._offset = s.val() || 0; }, () => {});
-            db.ref('fonte_planilha/conteudo').on('value', s => { this._c = s.val(); this._render(); this._talvezProcessar(); }, () => {});
+            db.ref('fonte_planilha/conteudo').on('value', s => { const ant = this._c; this._c = s.val(); this._avisarMudanca(ant, this._c); this._render(); this._talvezProcessar(); }, () => {});
+            db.ref('fonte_planilha/erro').on('value', s => { this._erro = s.val(); this._render(); }, () => {});
+            this._titulo = document.title;
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) { this._fora = 0; this._tituloAtualizar(); } });
+            window.addEventListener('focus', () => { this._fora = 0; this._tituloAtualizar(); });
+            document.addEventListener('click', () => { try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {} }, { once: true });
             db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); this._talvezProcessar(); }, () => {});
             db.ref('meta/planilha_processada').on('value', s => { this._proc = s.val(); this._render(); }, () => {});
             setInterval(() => { this._render(); this._talvezProcessar(); }, 20000);
@@ -963,7 +968,7 @@
         _agora() { return Date.now() + (this._offset || 0); },
         _ultimo() { return Math.max(this._verif || 0, (this._c && this._c.geradoEm) || 0); },
         _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
-        estaParada() { return !!(this._c && this._c.texto) && this._min() >= this.PARADA_MIN; },
+        estaParada() { return !!(this._c && this._c.texto) && (!!this._erro || this._min() >= this.PARADA_MIN); },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
         _botao() {
             let b = document.getElementById('nit-planilha-btn'); if (b) return b;
@@ -1014,12 +1019,14 @@
             // faixa: fato + ação, sem esperar o operador olhar o botão
             if (parada) {
                 const desde = NitDiario._hhmm(this._ultimo());
-                this._faixa(true, `⚠ PLANILHA PAROU ÀS ${desde} · COLE O RELATÓRIO DO WHATSAPP`);
-                if (this._parada !== true) { this._parada = true; try { NitDiario.acao(`⚠ Planilha parou às ${desde}. Relatório pelo WhatsApp.`); } catch (e) {} }
+                this._faixa(true, this._erro ? '⚠ PLANILHA MUDOU DE FORMATO · COLE O RELATÓRIO DO WHATSAPP' : `⚠ PLANILHA PAROU ÀS ${desde} · COLE O RELATÓRIO DO WHATSAPP`);
+                if (this._parada !== true) { this._parada = true; try { NitDiario.acao(this._erro ? `⚠ Planilha mudou de formato (${this._erro}). Relatório pelo WhatsApp.` : `⚠ Planilha parou às ${desde}. Relatório pelo WhatsApp.`); } catch (e) {}
+                    this._notificar('⚠ PLANILHA PAROU', 'Cole o relatório do WhatsApp no NIT.', 'parada'); this._tituloAtualizar(); }
             } else {
                 this._faixa(false);
-                if (this._parada === true) { try { NitDiario.acao('✓ Planilha voltou.'); } catch (e) {} }
-                this._parada = false;
+                const voltou = this._parada === true;
+                if (voltou) { try { NitDiario.acao('✓ Planilha voltou.'); } catch (e) {} }
+                this._parada = false; if (voltou) this._tituloAtualizar();
             }
             if (!b) return;
             b.style.display = '';
@@ -1038,18 +1045,66 @@
         },
         async _talvezProcessar() {
             if (!this.AUTO || this._tentando || this.estaParada()) return;
-            const c = this._c; if (!c || !c.texto || this._jaProcessada()) return;
+            const c = this._c; if (!c || !c.texto) return;
+            // janela que pegou a vez e travou: depois de 2 min, outra assume (uma vez por versão)
+            const p = this._proc, travada = this._jaProcessada() && p.janela !== this._janela && !p.retomado
+                && (this._agora() - (p.ts || 0)) > 120000 && this.novidades() > 0;
+            if (this._jaProcessada() && !travada) return;
             if (this._impedimento()) { this._render(); return; }
             this._tentando = true;
             try {
                 const db = NitFirebase.db, ass = c.assinatura;
                 // só uma janela leva: quem gravar primeiro a assinatura nova processa
-                await db.ref('meta/planilha_processada').transaction(v => (v && v.assinatura === ass) ? v
-                    : { assinatura: ass, janela: this._janela, por: NitLogin.operador || 'anon', ts: Date.now() });
+                await db.ref('meta/planilha_processada').transaction(v => (v && v.assinatura === ass && !(travada && v.janela === p.janela && !v.retomado)) ? v
+                    : { assinatura: ass, janela: this._janela, por: NitLogin.operador || 'anon', ts: Date.now(), ...(travada ? { retomado: true } : {}) });
                 const s = await db.ref('meta/planilha_processada').once('value'), v = s.val() || {};
                 if (v.assinatura === ass && v.janela === this._janela && this._c && this._c.assinatura === ass) this.processar('auto');
             } catch (e) { console.warn('[NIT] planilha auto', e); }
             finally { this._tentando = false; setTimeout(() => this._render(), 1500); }
+        },
+        // ── avisos de mudança: na tela (aviso passageiro + brilho no card), fora da tela (título + notificação)
+        _diff(ant, novo) {
+            const A = (ant && ant.itens) || [], N = (novo && novo.itens) || [], k = x => `${x.c}|${x.i}`;
+            const mA = new Map(A.map(x => [k(x), x])), mN = new Map(N.map(x => [k(x), x]));
+            const out = [], cods = new Set(), usados = new Set();
+            for (const x of N) {
+                const a = mA.get(k(x));
+                if (!a) {
+                    const velho = A.find(y => y.c === x.c && !mN.has(k(y)) && !usados.has(k(y)));
+                    if (velho) { usados.add(k(velho)); out.push(`início corrigido ${x.c}`); } else out.push(`${x.f ? 'entrou normalizado' : 'entrou'} ${x.c}`);
+                    cods.add(x.c);
+                } else if (!a.f && x.f) { out.push(`normalizou ${x.c}`); cods.add(x.c); }
+                else if (a.f && !x.f) { out.push(`reabriu ${x.c}`); cods.add(x.c); }
+                else if (a.f !== x.f) { out.push(`fim corrigido ${x.c}`); cods.add(x.c); }
+            }
+            for (const a of A) if (!mN.has(k(a)) && !usados.has(k(a))) { out.push(`saiu ${a.c}`); cods.add(a.c); }
+            return { textos: out, cods: [...cods] };
+        },
+        _avisarMudanca(ant, novo) {
+            if (!ant || !novo || !novo.assinatura || ant.assinatura === novo.assinatura) return;   // 1ª leitura não avisa
+            const d = this._diff(ant, novo), hh = NitDiario._hhmm(novo.geradoEm);
+            const corpo = d.textos.length ? d.textos.slice(0, 6).join(' · ') + (d.textos.length > 6 ? ` · +${d.textos.length - 6}` : '') : 'observação ou causa atualizada';
+            try { showToast(`📋 ${hh} · ${corpo}`, 'info', 8000); } catch (e) {}
+            setTimeout(() => d.cods.forEach(c => document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${c}"]`).forEach(el => {
+                el.classList.add('nit-planilha-mudou'); setTimeout(() => el.classList.remove('nit-planilha-mudou'), 10000); })), 2500);
+            if (document.hidden || !document.hasFocus()) { this._fora += Math.max(1, d.textos.length); this._tituloAtualizar(); }
+            this._notificar(`📋 RELATÓRIO ATUALIZADO ${hh}`, `${corpo}\nAtualize o grupo.`, novo.assinatura);
+        },
+        _tituloAtualizar() {
+            const base = this._titulo || document.title.replace(/^(\(\d+\) |⚠ PAROU · )/, '');
+            document.title = this._parada ? `⚠ PAROU · ${base}` : this._fora ? `(${this._fora}) ${base}` : base;
+        },
+        _notificar(titulo, corpo, tag) {
+            try {
+                if (!(document.hidden || !document.hasFocus())) return;                // na tela, o aviso passageiro basta
+                if (!window.Notification || Notification.permission !== 'granted') return;
+                const n = new Notification(titulo, { body: corpo, tag: `nit-planilha-${tag}` });   // mesma tag = um aviso só, mesmo com 2 abas
+                n.onclick = () => { try { window.focus(); n.close(); this.mostrarSaida(); } catch (e) {} };
+            } catch (e) { /* não bloqueia */ }
+        },
+        mostrarSaida() {
+            const s = document.getElementById('relatorio-final-preview'); if (!s) return;
+            s.scrollIntoView({ block: 'center' }); s.classList.add('nit-planilha-mudou'); setTimeout(() => s.classList.remove('nit-planilha-mudou'), 6000);
         },
         processar(como) {
             const c = this._c; if (!c || !c.texto) return;
