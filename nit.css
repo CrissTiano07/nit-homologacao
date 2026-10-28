@@ -2215,3 +2215,8 @@
 /* 13.2.2 · ADM: limpar / restaurar o painel */
 .nit-admin-btn { margin-left: 8px; border-color: color-mix(in srgb, var(--color-danger) 55%, transparent) !important; color: #ff9b94 !important; }
 #nit-admin-restaurar { border-color: color-mix(in srgb, var(--color-info) 55%, transparent) !important; color: #7dd3fc !important; }
+
+/* 14.0 (lab): botão do relatório da planilha */
+.nit-planilha-btn { margin-bottom: 8px; background: transparent; border: 1px solid rgba(255,255,255,.25); }
+.nit-planilha-btn.tem-novidade { border-color: #f5b400; box-shadow: 0 0 0 1px #f5b400 inset; }
+.nit-planilha-btn.parada { opacity: .6; border-style: dashed; }

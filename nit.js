@@ -941,6 +941,62 @@
     };
     window.NitAdmin = NitAdmin;
 
+    // ── 14.0 (lab): RELATÓRIO DA PLANILHA DO CTA ─────────────────────────────
+    // Um script no espelho da planilha do CTA monta, a cada minuto, o mesmo texto do relatório
+    // e grava em fonte_planilha/. Aqui só aparece um botão: clicar processa esse texto pelo
+    // caminho de sempre (o mesmo de colar o relatório). Sem o nó, o botão não aparece.
+    const NitPlanilha = {
+        PARADA_MIN: 5,          // sem verificação há mais que isso = script parado
+        _c: null, _verif: 0, _timer: null,
+        iniciar() {
+            const db = NitFirebase.db; if (!db || this._ligado) return; this._ligado = true;
+            db.ref('fonte_planilha/conteudo').on('value', s => { this._c = s.val(); this._render(); }, () => {});
+            db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); }, () => {});
+            this._timer = setInterval(() => this._render(), 30000);
+        },
+        _botao() {
+            let b = document.getElementById('nit-planilha-btn'); if (b) return b;
+            const ref = document.getElementById('btn-processar'); if (!ref) return null;
+            b = document.createElement('button'); b.type = 'button'; b.id = 'nit-planilha-btn';
+            b.className = 'sb-btn-processar-full nit-planilha-btn';
+            b.addEventListener('click', () => this.processar());
+            ref.insertAdjacentElement('beforebegin', b); return b;
+        },
+        // o que a planilha diz e o painel ainda não mostra
+        novidades() {
+            const it = (this._c && this._c.itens) || [];
+            const cards = [...document.querySelectorAll('#tab-semaforo .kanban-card')];
+            return it.filter(x => {
+                const c = cards.find(el => el.dataset.codigo === x.c && (el.dataset.inicio || '').trim() === x.i);
+                if (!c) return true;
+                return !!x.f !== !!c.closest('#coluna-normalizados');
+            }).length;
+        },
+        _render() {
+            const c = this._c, b = c && c.texto ? this._botao() : document.getElementById('nit-planilha-btn');
+            if (!b) return;
+            if (!c || !c.texto) { b.style.display = 'none'; return; }
+            b.style.display = '';
+            const min = Math.round((Date.now() - (this._verif || c.geradoEm || 0)) / 60000);
+            const parada = min > this.PARADA_MIN, n = this.novidades();
+            b.classList.toggle('tem-novidade', n > 0 && !parada);
+            b.classList.toggle('parada', parada);
+            const hh = NitDiario._hhmm(c.geradoEm);
+            b.innerHTML = `<span class="sb-label">📋 PLANILHA ${hh}${parada ? ` · ⚠ parada há ${min} min` : n ? ` · ${n} novidade${n > 1 ? 's' : ''}` : ' · em dia'}</span>`;
+            b.title = parada ? 'A planilha não é conferida há alguns minutos. Use o relatório colado.' : 'Processa o relatório montado da planilha do CTA, como se fosse colado.';
+        },
+        processar() {
+            const c = this._c; if (!c || !c.texto) return;
+            const ta = document.getElementById('relatorio-bruto-input'), go = document.getElementById('btn-processar');
+            if (!ta || !go) return;
+            ta.value = c.texto;
+            NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado.`);
+            go.click();
+            setTimeout(() => this._render(), 1500);
+        },
+    };
+    window.NitPlanilha = NitPlanilha;
+
     // ── LOGIN ─────────────────────────────────────────────────────────────────
     const NitLogin = {
         operador: null,
@@ -1097,6 +1153,7 @@
             registrarAcao(`Login: ${this.operador} (${this.email}) — ${this.turno}.`);
             setTimeout(() => NitProcessamento.verificar(), 800);
             try { NitAdmin.verificar(); } catch (e) { /* não bloqueia */ }
+            try { NitPlanilha.iniciar(); } catch (e) { /* não bloqueia */ }
         },
 
         // ── Logout ────────────────────────────────────────────────────────
