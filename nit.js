@@ -1084,21 +1084,47 @@
             if (!ant || !novo || !novo.assinatura || ant.assinatura === novo.assinatura) return;   // 1ª leitura não avisa
             const d = this._diff(ant, novo), hh = NitDiario._hhmm(novo.geradoEm);
             const corpo = d.textos.length ? d.textos.slice(0, 6).join(' · ') + (d.textos.length > 6 ? ` · +${d.textos.length - 6}` : '') : 'observação ou causa atualizada';
-            try { showToast(`📋 ${hh} · ${corpo}`, 'info', 8000); } catch (e) {}
-            setTimeout(() => d.cods.forEach(c => document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${c}"]`).forEach(el => {
-                el.classList.add('nit-planilha-mudou'); setTimeout(() => el.classList.remove('nit-planilha-mudou'), 10000); })), 2500);
+            try { showToast(`📋 ${hh} · ${corpo}`, 'info', 15000); const t = document.querySelector('#toast-container .toast:last-child'); if (t) t.classList.add('nit-toast-pisca'); } catch (e) {}
+            // a borda do card que mudou pisca e fica acesa até a próxima atualização
+            this._cardsMudaram = d.cods;
+            setTimeout(() => this._acenderCards(), 2500); setTimeout(() => this._acenderCards(), 6000);
             if (document.hidden || !document.hasFocus()) { this._fora += Math.max(1, d.textos.length); this._tituloAtualizar(); }
             this._notificar(`📋 RELATÓRIO ATUALIZADO ${hh}`, `${corpo}\nAtualize o grupo.`, novo.assinatura);
         },
+        _acenderCards() {
+            document.querySelectorAll('#tab-semaforo .kanban-card.nit-planilha-mudou').forEach(el => el.classList.remove('nit-planilha-mudou'));
+            (this._cardsMudaram || []).forEach(c => document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${c}"]`).forEach(el => el.classList.add('nit-planilha-mudou')));
+        },
+        _base() { return this._titulo || document.title.replace(/^(🔴 )?(\(\d+\) |⚠ PAROU · )/, ''); },
         _tituloAtualizar() {
-            const base = this._titulo || document.title.replace(/^(\(\d+\) |⚠ PAROU · )/, '');
+            const base = this._base();
             document.title = this._parada ? `⚠ PAROU · ${base}` : this._fora ? `(${this._fora}) ${base}` : base;
+            // fora da tela com novidade (ou parada): título e ícone da aba piscam em vermelho
+            const piscar = !!(this._parada || this._fora);
+            if (piscar && !this._pisca) {
+                let on = false;
+                this._pisca = setInterval(() => {
+                    on = !on; const b = this._base();
+                    const t = this._parada ? `⚠ PAROU · ${b}` : `(${this._fora}) ${b}`;
+                    document.title = on ? `🔴 ${t}` : t;
+                    this._icone(on || this._parada ? 'vermelho' : 'normal');
+                }, 800);
+                this._icone('vermelho');
+            } else if (!piscar && this._pisca) { clearInterval(this._pisca); this._pisca = null; this._icone('normal'); document.title = base; }
+        },
+        _icone(cor) {
+            let l = document.querySelector('link[rel="icon"]');
+            if (!l) { l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); }
+            if (this._iconeOriginal == null) this._iconeOriginal = l.getAttribute('href') || 'data:,';
+            const vermelho = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#ef4444"/></svg>');
+            const novo = cor === 'vermelho' ? vermelho : this._iconeOriginal;
+            if (l.getAttribute('href') !== novo) l.setAttribute('href', novo);
         },
         _notificar(titulo, corpo, tag) {
             try {
                 if (!(document.hidden || !document.hasFocus())) return;                // na tela, o aviso passageiro basta
                 if (!window.Notification || Notification.permission !== 'granted') return;
-                const n = new Notification(titulo, { body: corpo, tag: `nit-planilha-${tag}` });   // mesma tag = um aviso só, mesmo com 2 abas
+                const n = new Notification(titulo, { body: corpo, tag: `nit-planilha-${tag}`, requireInteraction: true });   // mesma tag = um aviso só, mesmo com 2 abas
                 n.onclick = () => { try { window.focus(); n.close(); this.mostrarSaida(); } catch (e) {} };
             } catch (e) { /* não bloqueia */ }
         },
@@ -1116,7 +1142,7 @@
             ta.value = c.texto;
             NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
             go.click();
-            setTimeout(() => this._render(), 1500);
+            setTimeout(() => { this._render(); this._acenderCards(); }, 1500);
         },
     };
     window.NitPlanilha = NitPlanilha;

@@ -2222,8 +2222,10 @@
 .nit-planilha-btn.parada { border: 2px solid #ef4444; color: #fecaca; }
 #nit-planilha-faixa { position: sticky; top: 0; z-index: 50; margin: 0 0 8px; padding: 10px 16px; border-radius: 8px;
   background: #b91c1c; color: #fff; font: 800 15px/1.3 inherit; letter-spacing: .02em; text-align: center;
-  animation: nitPlanilhaPisca 1.2s ease-in-out 3; }
+  animation: nitPlanilhaPisca 1s ease-in-out infinite; }
 @keyframes nitPlanilhaPisca { 50% { background: #ef4444; } }
 body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; outline-offset: 2px; }
-.nit-planilha-mudou { animation: nitPlanilhaMudou 1.4s ease-in-out 4; box-shadow: 0 0 0 2px #f5b400 !important; }
-@keyframes nitPlanilhaMudou { 50% { box-shadow: 0 0 0 5px rgba(245,180,0,.55) !important; } }
+.nit-planilha-mudou { outline: 3px solid #f5b400; outline-offset: 1px; animation: nitPlanilhaMudou 1s ease-in-out 12; }
+@keyframes nitPlanilhaMudou { 0%, 100% { outline-color: #f5b400; } 50% { outline-color: #ef4444; } }
+.toast.nit-toast-pisca { animation: nitToastPisca 1s ease-in-out 8; outline: 2px solid #f5b400; }
+@keyframes nitToastPisca { 50% { outline-color: #ef4444; filter: brightness(1.25); } }
