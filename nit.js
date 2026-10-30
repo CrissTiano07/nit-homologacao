@@ -1085,15 +1085,26 @@
             const d = this._diff(ant, novo), hh = NitDiario._hhmm(novo.geradoEm);
             const corpo = d.textos.length ? d.textos.slice(0, 6).join(' · ') + (d.textos.length > 6 ? ` · +${d.textos.length - 6}` : '') : 'observação ou causa atualizada';
             try { showToast(`📋 ${hh} · ${corpo}`, 'info', 15000); const t = document.querySelector('#toast-container .toast:last-child'); if (t) t.classList.add('nit-toast-pisca'); } catch (e) {}
-            // a borda do card que mudou pisca e fica acesa até a próxima atualização
-            this._cardsMudaram = d.cods;
-            setTimeout(() => this._acenderCards(), 2500); setTimeout(() => this._acenderCards(), 6000);
+            // a borda do card que mudou pisca 8 vezes e apaga (decisão do Cristiano, 30/10/2026)
+            this._acenderCards(d.cods);
             if (document.hidden || !document.hasFocus()) { this._fora += Math.max(1, d.textos.length); this._tituloAtualizar(); }
             this._notificar(`📋 RELATÓRIO ATUALIZADO ${hh}`, `${corpo}\nAtualize o grupo.`, novo.assinatura);
         },
-        _acenderCards() {
+        PISCA_MS: 8200,         // 8 piscadas de 1 s; depois a borda some
+        // acende cada card assim que ele aparece na tela (na outra janela ele chega pela sincronização)
+        _acenderCards(cods) {
             document.querySelectorAll('#tab-semaforo .kanban-card.nit-planilha-mudou').forEach(el => el.classList.remove('nit-planilha-mudou'));
-            (this._cardsMudaram || []).forEach(c => document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${c}"]`).forEach(el => el.classList.add('nit-planilha-mudou')));
+            (this._luzTimers || []).forEach(clearTimeout);
+            const falta = new Set(cods || []); this._luzTimers = [];
+            const tentar = () => {
+                for (const c of [...falta]) {
+                    const els = document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${c}"]`);
+                    if (!els.length) continue;
+                    falta.delete(c);
+                    els.forEach(el => { el.classList.add('nit-planilha-mudou'); this._luzTimers.push(setTimeout(() => el.classList.remove('nit-planilha-mudou'), this.PISCA_MS)); });
+                }
+            };
+            [1500, 3000, 5000, 8000, 12000].forEach(ms => this._luzTimers.push(setTimeout(tentar, ms)));
         },
         _base() { return this._titulo || document.title.replace(/^(🔴 )?(\(\d+\) |⚠ PAROU · )/, ''); },
         _tituloAtualizar() {
@@ -1142,7 +1153,7 @@
             ta.value = c.texto;
             NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
             go.click();
-            setTimeout(() => { this._render(); this._acenderCards(); }, 1500);
+            setTimeout(() => this._render(), 1500);
         },
     };
     window.NitPlanilha = NitPlanilha;
