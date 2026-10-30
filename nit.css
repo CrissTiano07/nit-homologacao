@@ -2217,7 +2217,9 @@
 #nit-admin-restaurar { border-color: color-mix(in srgb, var(--color-info) 55%, transparent) !important; color: #7dd3fc !important; }
 
 /* 14.0: relatório da planilha */
-.nit-planilha-btn { margin-bottom: 8px; background: transparent; border: 1px solid rgba(255,255,255,.25); }
+.nit-planilha-btn { margin-bottom: 6px; min-height: 0; padding: 6px 10px; font-size: 12px; background: transparent; border: 1px solid rgba(255,255,255,.25); }
+/* 14.0: o botão da planilha empurrou o "Ver Relatório" para fora da tela → a barra lateral rola */
+.sidebar:not(.collapsed) { overflow-y: auto; overflow-x: hidden; }
 .nit-planilha-btn.tem-novidade { border-color: #f5b400; box-shadow: 0 0 0 1px #f5b400 inset; }
 .nit-planilha-btn.parada { border: 2px solid #ef4444; color: #fecaca; }
 #nit-planilha-faixa { position: sticky; top: 0; z-index: 50; margin: 0 0 8px; padding: 10px 16px; border-radius: 8px;
