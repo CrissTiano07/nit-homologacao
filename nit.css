@@ -2216,12 +2216,12 @@
 .nit-admin-btn { margin-left: 8px; border-color: color-mix(in srgb, var(--color-danger) 55%, transparent) !important; color: #ff9b94 !important; }
 #nit-admin-restaurar { border-color: color-mix(in srgb, var(--color-info) 55%, transparent) !important; color: #7dd3fc !important; }
 
-/* 14.0: relatório da planilha */
-.nit-planilha-btn { margin-bottom: 6px; min-height: 0; padding: 6px 10px; font-size: 12px; background: transparent; border: 1px solid rgba(255,255,255,.25); }
-/* 14.0: o botão da planilha empurrou o "Ver Relatório" para fora da tela → a barra lateral rola */
-.sidebar:not(.collapsed) { overflow-y: auto; overflow-x: hidden; }
-.nit-planilha-btn.tem-novidade { border-color: #f5b400; box-shadow: 0 0 0 1px #f5b400 inset; }
-.nit-planilha-btn.parada { border: 2px solid #ef4444; color: #fecaca; }
+/* 14.0: relatório da planilha — estado no topo, como o ✓ SALVO */
+.nit-planilha-estado { margin-left: 10px; font-size: 12px; font-weight: 700; color: #22c55e; cursor: pointer; white-space: nowrap; }
+.nit-planilha-estado.processando, .nit-planilha-estado.tem-novidade { color: #f59e0b; }
+.nit-planilha-estado.tem-novidade { animation: nitPlanilhaEstado 1s ease-in-out 8; }
+.nit-planilha-estado.parada { color: #ef4444; animation: nitPlanilhaEstado 1s ease-in-out infinite; }
+@keyframes nitPlanilhaEstado { 50% { opacity: .35; } }
 #nit-planilha-faixa { position: sticky; top: 0; z-index: 50; margin: 0 0 8px; padding: 10px 16px; border-radius: 8px;
   background: #b91c1c; color: #fff; font: 800 15px/1.3 inherit; letter-spacing: .02em; text-align: center;
   animation: nitPlanilhaPisca 1s ease-in-out infinite; }
@@ -2231,3 +2231,20 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
 @keyframes nitPlanilhaMudou { 0%, 100% { outline-color: transparent; } 50% { outline-color: #f5b400; } }
 .toast.nit-toast-pisca { animation: nitToastPisca 1s ease-in-out 8; outline: 2px solid #f5b400; }
 @keyframes nitToastPisca { 50% { outline-color: #ef4444; filter: brightness(1.25); } }
+
+/* 14.1: barra lateral (especificação de 22/10/2026) */
+.sb-ultimo { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+.sb-ultimo b { color: #e2e8f0; }
+#sb-sec-saida #btn-visualizar-relatorio { margin-top: 8px; }
+.sb-resumo { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(148,163,184,.06); border: 1px solid rgba(148,163,184,.15); }
+.sb-resumo-tit { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #94a3b8; margin: 2px 0 6px; }
+.sb-resumo-tit + #sb-causas { margin-bottom: 10px; }
+.sb-causa { position: relative; display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #e2e8f0; padding: 4px 6px; margin-bottom: 3px; }
+.sb-causa i { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(148,163,184,.14); border-radius: 4px; z-index: 0; }
+.sb-causa span, .sb-causa b { position: relative; z-index: 1; }
+.sb-causa span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-causa-vazio { color: #64748b; font-style: italic; }
+.sb-atendidos { display: flex; gap: 8px; }
+.sb-atendidos span { flex: 1; font-size: 12px; font-weight: 700; padding: 6px 8px; border-radius: 6px; text-align: center; white-space: nowrap; }
+.sb-at-vl { color: #fb923c; background: rgba(251,146,60,.12); border: 1px solid rgba(251,146,60,.35); }
+.sb-at-amc { color: #60a5fa; background: rgba(96,165,250,.12); border: 1px solid rgba(96,165,250,.35); }

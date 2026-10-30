@@ -970,13 +970,14 @@
         _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
         estaParada() { return !!(this._c && this._c.texto) && (!!this._erro || this._min() >= this.PARADA_MIN); },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
+        // estado no topo, ao lado do ✓ SALVO (mesmo jeito de mostrar estado; não ocupa a barra lateral)
         _botao() {
             let b = document.getElementById('nit-planilha-btn'); if (b) return b;
-            const ref = document.getElementById('btn-processar'); if (!ref) return null;
-            b = document.createElement('button'); b.type = 'button'; b.id = 'nit-planilha-btn';
-            b.className = 'sb-btn-processar-full nit-planilha-btn';
+            const ref = document.getElementById('nit-gravacao-status') || document.getElementById('nit-firebase-status'); if (!ref) return null;
+            b = document.createElement('span'); b.id = 'nit-planilha-btn'; b.setAttribute('role', 'status');
+            b.className = 'nit-planilha-estado';
             b.addEventListener('click', () => this.processar('mão'));
-            ref.insertAdjacentElement('beforebegin', b); return b;
+            ref.insertAdjacentElement('afterend', b); return b;
         },
         _faixa(mostrar, texto) {
             let f = document.getElementById('nit-planilha-faixa');
@@ -1032,16 +1033,17 @@
             b.style.display = '';
             const n = this.novidades(), imp = this._impedimento();
             const precisa = !parada && n > 0 && (!this.AUTO || (imp && imp !== 'sem relatório'));
+            const processando = !parada && !precisa && n > 0;
             b.classList.toggle('tem-novidade', precisa);
             b.classList.toggle('parada', parada);
+            b.classList.toggle('processando', processando);
             const hh = NitDiario._hhmm(c.geradoEm);
-            const estado = parada ? `⚠ parada há ${min} min`
-                : n ? (this.AUTO && !imp ? 'processando…' : `${n} novidade${n > 1 ? 's' : ''}`)
-                : (this.AUTO ? 'automático' : 'em dia');
-            b.innerHTML = `<span class="sb-label">📋 PLANILHA ${hh} · ${estado}</span>`;
-            b.title = parada ? 'A planilha parou de ser conferida. Cole o relatório do WhatsApp.'
-                : precisa && this.AUTO ? `Não processou sozinho (${imp}). Clique para processar.`
-                : 'Relatório montado da planilha do CTA. Clique para processar agora.';
+            b.textContent = parada ? '⚠ PLANILHA PAROU'
+                : precisa ? `📋 ${n} NOVIDADE${n > 1 ? 'S' : ''} · PROCESSAR`
+                : processando ? `📋 PLANILHA ${hh} ⏳` : `📋 PLANILHA ${hh}`;
+            b.title = parada ? `A planilha não responde há ${min} min. Cole o relatório do WhatsApp.`
+                : precisa ? `Não processou sozinho (${imp || 'modo manual'}). Clique para processar.`
+                : `Relatório da planilha do CTA, automático. Última mudança às ${hh}. Clique para processar agora.`;
         },
         async _talvezProcessar() {
             if (!this.AUTO || this._tentando || this.estaParada()) return;
@@ -1140,7 +1142,7 @@
             } catch (e) { /* não bloqueia */ }
         },
         mostrarSaida() {
-            const s = document.getElementById('relatorio-final-preview'); if (!s) return;
+            const s = document.getElementById('sb-sec-saida'); if (!s) return;
             s.scrollIntoView({ block: 'center' }); s.classList.add('nit-planilha-mudou'); setTimeout(() => s.classList.remove('nit-planilha-mudou'), 6000);
         },
         processar(como) {
@@ -1152,7 +1154,8 @@
             }
             ta.value = c.texto;
             NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
-            go.click();
+            this._processandoAuto = como === 'auto';
+            go.click(); setTimeout(() => { this._processandoAuto = false; }, 5000);
             setTimeout(() => this._render(), 1500);
         },
     };
@@ -1315,6 +1318,7 @@
             setTimeout(() => NitProcessamento.verificar(), 800);
             try { NitAdmin.verificar(); } catch (e) { /* não bloqueia */ }
             try { NitPlanilha.iniciar(); } catch (e) { /* não bloqueia */ }
+            try { NitFirebase.db.ref('meta/ultimo_processamento').on('value', sn => NitSidebar.ultimo(sn.val()), () => {}); } catch (e) { /* não bloqueia */ }
         },
 
         // ── Logout ────────────────────────────────────────────────────────
@@ -1847,7 +1851,7 @@ const NitData = {
                     const campos = ['equipe','viatura','pl','sub','status','observacoes',
                                     'inicio','endereco','tsDespacho','tsFirstDispatch','tsChegada',
                                     'equipeApoio','viaturaApoio',
-                                    'data_fim','hora_fim','fim','coluna'];
+                                    'data_fim','hora_fim','fim','coluna','colunaN'];
                     campos.forEach(k => {
                         el.dataset[k] = (dados[k] != null) ? dados[k] : '';
                     });
@@ -2183,6 +2187,7 @@ const NitData = {
                 const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${/ILEGÍVEL/.test(i.titulo || '') ? 'hora de início ilegível' : nomes[i.msg]}`);
                 for (const [cod, n] of Object.entries(nRep)) novosItens.push(`${cod} veio ${n} vezes (contado 1)`);
                 NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [], codigosLidos: Semaforo._codigosLidos || [] });
+                try { NitFirebase.exec((db, ref, update) => update(ref(db, 'meta'), { ultimo_processamento: { ts: Date.now(), por: NitLogin.operador || 'anon', auto: !!(window.NitPlanilha && NitPlanilha._processandoAuto) } })); } catch (e) { /* não bloqueia */ }
             } catch (e) { /* não bloqueia */ }
 
             // NIT-01: nada esperando o operador e nada fora do normal
@@ -3224,6 +3229,7 @@ const NitData = {
             });
 
             this.gerarPreviewRelatorio();
+            try { NitSidebar.renderResumo(); } catch (e) { /* não bloqueia */ }
             // 20/10: recolher é só manual (pedido do Cristiano); a coluna nova empurra as outras e a tela rola para o lado
         },
 
@@ -4221,15 +4227,61 @@ window.NitNormalizar = NitNormalizar;
     const NitSidebar = {
         _KEY: 'nit-sidebar-collapsed',
 
+        // 14.1 (especificação de 22/10/2026): barra lateral sempre aberta, sem botão de recolher;
+        // SAÍDA = último processamento + totais + Ver Relatório/Incluir normalizados + CAUSAS DO DIA + ATENDIDOS.
         inicializar() {
-            const btn = document.getElementById('btn-sb-toggle');
-            if (!btn) return;
-            if (localStorage.getItem(this._KEY) === '1') this._setSidebar(true);
-            btn.addEventListener('click', () => this.toggle());
-            document.addEventListener('keydown', e => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                if (e.key === '[') this.toggle();
-            });
+            try { localStorage.removeItem(this._KEY); } catch (e) { /* não bloqueia */ }
+            const sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('collapsed');
+            document.getElementById('btn-sb-toggle')?.remove();
+            this._montarSaida();
+        },
+        _montarSaida() {
+            const sec = document.getElementById('sb-sec-saida'); if (!sec || document.getElementById('sb-ultimo')) return;
+            const inner = sec.querySelector('.sb-inner'), bal = inner && inner.querySelector('.balanco-compacto');
+            if (!bal) return;
+            const ult = document.createElement('div'); ult.id = 'sb-ultimo'; ult.className = 'sb-ultimo';
+            ult.innerHTML = 'último: <b>—</b>'; bal.insertAdjacentElement('beforebegin', ult);
+            const ver = document.getElementById('btn-visualizar-relatorio'), chk = inner.querySelector('.form-check');
+            if (ver) bal.insertAdjacentElement('afterend', ver);
+            if (chk && ver) ver.insertAdjacentElement('afterend', chk);
+            const prev = document.getElementById('relatorio-final-preview'); if (prev) prev.hidden = true;   // continua existindo: o Ver Relatório usa o mesmo texto
+            const bl = document.createElement('div'); bl.id = 'sb-resumo'; bl.className = 'sb-resumo';
+            bl.innerHTML = '<div class="sb-resumo-tit">CAUSAS DO DIA</div><div id="sb-causas"></div>'
+                + '<div class="sb-resumo-tit">ATENDIDOS</div><div class="sb-atendidos">'
+                + '<span class="sb-at-vl">VIA LIVRE <b id="sb-at-vl">0</b></span><span class="sb-at-amc">AMC <b id="sb-at-amc">0</b></span></div>';
+            (chk || ver || bal).insertAdjacentElement('afterend', bl);
+        },
+        // os mesmos cards do total de Ocorrências (data de referência de hoje, em qualquer coluna)
+        renderResumo() {
+            const box = document.getElementById('sb-causas'); if (!box) return;
+            const hoje = NitData.hoje();
+            const cards = [...document.querySelectorAll('#coluna-espera .kanban-card, #coluna-sem-necessidade .kanban-card, #coluna-vl .kanban-card, #coluna-amc .kanban-card, #coluna-normalizados .kanban-card')]
+                .filter(c => c.dataset.datareferencia === hoje);
+            const cont = {};
+            cards.forEach(c => { const k = (c.dataset.tipo || '').trim().toUpperCase() || 'SEM CAUSA'; cont[k] = (cont[k] || 0) + 1; });
+            const lista = Object.entries(cont).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+            const max = lista.length ? lista[0][1] : 1;
+            box.replaceChildren(...lista.map(([c, n]) => {
+                const d = document.createElement('div'); d.className = 'sb-causa';
+                const barra = document.createElement('i'); barra.style.width = `${Math.round(n / max * 100)}%`;
+                const a = document.createElement('span'); a.textContent = c;
+                const b = document.createElement('b'); b.textContent = n;
+                d.append(barra, a, b); return d;
+            }));
+            if (!lista.length) { const d = document.createElement('div'); d.className = 'sb-causa sb-causa-vazio'; d.textContent = 'nenhuma ocorrência hoje'; box.append(d); }
+            const passou = (c, rot, col) => !!c.closest(col) || (c.dataset.colunaN || '').includes(rot);
+            const vl = cards.filter(c => passou(c, 'VIA LIVRE', '#coluna-vl')).length;
+            const amc = cards.filter(c => passou(c, 'AMC', '#coluna-amc')).length;
+            document.getElementById('sb-at-vl').textContent = vl;
+            document.getElementById('sb-at-amc').textContent = amc;
+        },
+        ultimo(v) {
+            const el = document.getElementById('sb-ultimo'); if (!el) return;
+            const b = el.querySelector('b');
+            if (!v || !v.ts) { b.textContent = '—'; el.title = ''; return; }
+            const d = new Date(v.ts);
+            b.textContent = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${NitDiario._hhmm(v.ts)}`;
+            el.title = `Último relatório processado (${v.por || '—'}${v.auto ? ', automático' : ''})`;
         },
 
         toggle()   { const sb = document.getElementById('sidebar'); if (sb) this._setSidebar(!sb.classList.contains('collapsed')); },
