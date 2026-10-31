@@ -2297,3 +2297,4 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
 #sb-causas.sb-causas-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
 #sb-causas.sb-causas-etiquetas .sb-causa { margin: 0; padding: 2px 7px; border-radius: 4px; background: rgba(148,163,184,.14); gap: 6px; font-size: 11px; }
 #sb-causas.sb-causas-etiquetas .sb-causa i { display: none; }
+.sb-atendidos[hidden], .sb-resumo-tit[hidden] { display: none !important; }

@@ -969,6 +969,8 @@
             db.ref('.info/serverTimeOffset').on('value', s => { this._offset = s.val() || 0; }, () => {});
             db.ref('fonte_planilha/conteudo').on('value', s => { const ant = this._c; this._c = s.val(); this._avisarMudanca(ant, this._c); this._render(); this._talvezProcessar(); }, () => {});
             db.ref('fonte_planilha/erro').on('value', s => { this._erro = s.val(); this._render(); }, () => {});
+            // sem conexão com o banco (internet caiu, aba congelada pelo navegador): não é a planilha que parou
+            db.ref('.info/connected').on('value', s => { this._offline = s.val() === false; this._render(); }, () => {});
             this._titulo = document.title;
             document.addEventListener('visibilitychange', () => { if (!document.hidden) { this._fora = 0; this._tituloAtualizar(); } });
             window.addEventListener('focus', () => { this._fora = 0; this._tituloAtualizar(); });
@@ -980,7 +982,8 @@
         _agora() { return Date.now() + (this._offset || 0); },
         _ultimo() { return Math.max(this._verif || 0, (this._c && this._c.geradoEm) || 0); },
         _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
-        estaParada() { return !!(this._c && this._c.texto) && (!!this._erro || this._min() >= this.PARADA_MIN); },
+        estaParada() { return !!(this._c && this._c.texto) && !this._offline && (!!this._erro || this._min() >= this.PARADA_MIN); },
+        semConexao() { return !!(this._c && this._c.texto) && this._offline; },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
         _faixa(mostrar, texto) {
             let f = document.getElementById('nit-planilha-faixa');
@@ -1020,20 +1023,24 @@
             if (!tem) { this._estado = null; this._faixa(false); try { NitSidebar.renderEstado(); } catch (e) {} return; }
             const parada = this.estaParada(), min = this._min();
             // faixa: fato + ação, sem esperar o operador olhar a linha de estado
-            if (parada) {
+            if (this.semConexao()) {
+                this._faixa(true, '📵 SEM INTERNET · A PLANILHA NÃO CHEGA AQUI ATÉ A CONEXÃO VOLTAR');
+                if (this._semNet !== true) { this._semNet = true; try { NitDiario.acao(`📵 Sem conexão às ${NitDiario._hhmm(Date.now())}: a planilha não chega até a conexão voltar.`); } catch (e) {} }
+            } else if (parada) {
                 const desde = NitDiario._hhmm(this._ultimo());
                 this._faixa(true, this._erro ? '⚠ PLANILHA MUDOU DE FORMATO · COLE O RELATÓRIO DO WHATSAPP' : `⚠ PLANILHA PAROU ÀS ${desde} · COLE O RELATÓRIO DO WHATSAPP`);
                 if (this._parada !== true) { this._parada = true; try { NitDiario.acao(this._erro ? `⚠ Planilha mudou de formato (${this._erro}). Relatório pelo WhatsApp.` : `⚠ Planilha parou às ${desde}. Relatório pelo WhatsApp.`); } catch (e) {}
                     this._notificar('⚠ PLANILHA PAROU', 'Cole o relatório do WhatsApp no NIT.', 'parada'); this._tituloAtualizar(); }
             } else {
                 this._faixa(false);
+                if (this._semNet === true) { this._semNet = false; try { NitDiario.acao('✓ Conexão voltou.'); } catch (e) {} }
                 const voltou = this._parada === true;
                 if (voltou) { try { NitDiario.acao('✓ Planilha voltou.'); } catch (e) {} }
                 this._parada = false; if (voltou) this._tituloAtualizar();
             }
             const n = this.novidades(), imp = this._impedimento();
             const precisa = !parada && n > 0 && (!this.AUTO || (imp && imp !== 'sem relatório'));
-            this._estado = { parada, min, n, imp, precisa, processando: !parada && !precisa && n > 0,
+            this._estado = { semConexao: this.semConexao(), parada, min, n, imp, precisa, processando: !parada && !precisa && n > 0,
                 desde: NitDiario._hhmm(this._ultimo()), erro: this._erro };
             try { NitSidebar.renderEstado(); } catch (e) { /* não bloqueia */ }
         },
@@ -1180,8 +1187,8 @@
             try { this._fecharOntem(c); } catch (e) { console.warn('[NIT] fechar ontem', e); }
             ta.value = c.texto;
             NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
-            this._processandoAuto = como === 'auto';
-            go.click(); setTimeout(() => { this._processandoAuto = false; }, 5000);
+            this._processandoAuto = como === 'auto'; this._processandoPlanilha = true;
+            go.click(); setTimeout(() => { this._processandoAuto = false; this._processandoPlanilha = false; }, 5000);
             setTimeout(() => this._render(), 1500);
         },
     };
@@ -2214,7 +2221,7 @@ const NitData = {
                 const novosItens = itens.filter(i => nomes[i.msg]).map(i => `${i.codigo} ${/ILEGÍVEL/.test(i.titulo || '') ? 'hora de início ilegível' : nomes[i.msg]}`);
                 for (const [cod, n] of Object.entries(nRep)) novosItens.push(`${cod} veio ${n} vezes (contado 1)`);
                 NitDiario.processamento({ totais: D.textoTotais(), aplic, itensNovos: novosItens, resolvidos: D._ultimosResolvidos || [], horasLidas: Semaforo._horasLidas || [], codigosLidos: Semaforo._codigosLidos || [] });
-                try { NitFirebase.exec((db, ref, update) => update(ref(db, 'meta'), { ultimo_processamento: { ts: Date.now(), por: NitLogin.operador || 'anon', auto: !!(window.NitPlanilha && NitPlanilha._processandoAuto) } })); } catch (e) { /* não bloqueia */ }
+                try { NitFirebase.exec((db, ref, update) => update(ref(db, 'meta'), { ultimo_processamento: { ts: Date.now(), por: NitLogin.operador || 'anon', auto: !!(window.NitPlanilha && NitPlanilha._processandoAuto), planilha: !!(window.NitPlanilha && NitPlanilha._processandoPlanilha) } })); } catch (e) { /* não bloqueia */ }
             } catch (e) { /* não bloqueia */ }
 
             // NIT-01: nada esperando o operador e nada fora do normal
@@ -4276,8 +4283,10 @@ window.NitNormalizar = NitNormalizar;
             if (chk && ver) ver.insertAdjacentElement('afterend', chk);
             const prev = document.getElementById('relatorio-final-preview'); if (prev) prev.hidden = true;   // continua existindo: o Ver Relatório usa o mesmo texto
             const bl = document.createElement('div'); bl.id = 'sb-resumo'; bl.className = 'sb-resumo';
+            // 14.2 (decisão de 31/10): ATENDIDOS fica escondido até a 14.3 (conta só equipe que CHEGOU, hora digitada).
+            // A contagem continua calculada (e testada), só não aparece.
             bl.innerHTML = '<div class="sb-resumo-tit">CAUSAS DO DIA</div><div id="sb-causas"></div>'
-                + '<div class="sb-resumo-tit">ATENDIDOS</div><div class="sb-atendidos">'
+                + '<div class="sb-resumo-tit" hidden>ATENDIDOS</div><div class="sb-atendidos" hidden>'
                 + '<span class="sb-at-vl">VIA LIVRE <b id="sb-at-vl">0</b></span><span class="sb-at-amc">AMC <b id="sb-at-amc">0</b></span></div>';
             (chk || ver || bal).insertAdjacentElement('afterend', bl);
             let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => this.renderResumo(), 200); });
@@ -4328,7 +4337,9 @@ window.NitNormalizar = NitNormalizar;
             const u = (pr && pl) ? ((pr.ts || 0) >= (pl.ts || 0) ? pr : { ...pl, auto: true }) : (pr || (pl && { ...pl, auto: true }));
             const e = (window.NitPlanilha && NitPlanilha._estado) || null;
             let txt, cls = 'ok', dica = '';
-            if (e && e.parada) {
+            if (e && e.semConexao) {
+                cls = 'parada'; txt = '📵 SEM INTERNET'; dica = 'Sem conexão com o banco. A planilha volta a chegar quando a conexão voltar.';
+            } else if (e && e.parada) {
                 cls = 'parada';
                 txt = e.erro ? '⚠ PLANILHA MUDOU DE FORMATO · COLE O RELATÓRIO' : `⚠ PLANILHA PAROU ${e.desde} · COLE O RELATÓRIO`;
                 dica = e.erro ? `A planilha do CTA mudou de formato (${e.erro}).` : `A planilha não responde há ${e.min} min.`;
@@ -4338,8 +4349,9 @@ window.NitNormalizar = NitNormalizar;
             } else if (e && e.processando) {
                 cls = 'processando'; txt = '⏳ ATUALIZANDO…';
             } else if (u && u.ts) {
-                txt = `✓ ATUALIZADO ${this._fmt(u.ts)} · ${u.auto ? 'PLANILHA' : 'COLADO'}`;
-                dica = `${u.auto ? 'Relatório da planilha do CTA, automático' : 'Relatório colado'}${u.por ? ` (${u.por})` : ''}.` + (e ? ' Clique para processar a planilha agora.' : '');
+                const daPlanilha = u.planilha || u.auto;
+                txt = `✓ ATUALIZADO ${this._fmt(u.ts)} · ${daPlanilha ? 'PLANILHA' : 'COLADO'}`;
+                dica = `${daPlanilha ? `Relatório da planilha do CTA${u.auto ? ', automático' : ''}` : 'Relatório colado'}${u.por ? ` (${u.por})` : ''}.` + (e ? ' Clique para processar a planilha agora.' : '');
             } else { cls = 'vazio'; txt = 'SEM ATUALIZAÇÃO HOJE'; }
             el.className = `sb-estado ${cls}`; el.textContent = txt; el.title = dica;
             el.style.cursor = (window.NitPlanilha && NitPlanilha._c && NitPlanilha._c.texto) ? 'pointer' : 'default';
