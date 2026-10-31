@@ -2274,7 +2274,7 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
   .balanco-compacto { padding: 4px 0 6px; }
   .sb-ultimo { margin-bottom: 0; }
   .sb-resumo { margin-top: 4px; padding: 8px 10px; }
-  .sb-causa { padding: 2px 6px; margin-bottom: 2px; }
+  .sb-causa { padding: 1px 6px; margin-bottom: 1px; font-size: 11.5px; line-height: 1.35; }
   .sb-atendidos span { padding: 4px 6px; }
 }
 @media (max-height: 720px) {
@@ -2285,8 +2285,12 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
   #sb-sec-saida .form-check { margin: 0; }
   #sb-sec-saida #btn-visualizar-relatorio { margin-top: 4px; min-height: 0; padding: 6px; }
   .sb-resumo-tit { margin: 0 0 4px; }
-  .sb-causa { padding: 1px 6px; }
+  .sb-causa { padding: 0 6px; font-size: 11px; line-height: 1.3; }
   .sb-resumo { padding: 6px 10px; }
   #sb-sec-saida .sb-section-header { height: 26px; }
 }
 .sb-causa-outras span { color: #94a3b8; font-style: italic; }
+/* muitas causas: etiquetas lado a lado (mesma ordem, maior → menor) */
+#sb-causas.sb-causas-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
+#sb-causas.sb-causas-etiquetas .sb-causa { margin: 0; padding: 2px 7px; border-radius: 4px; background: rgba(148,163,184,.14); gap: 6px; font-size: 11px; }
+#sb-causas.sb-causas-etiquetas .sb-causa i { display: none; }

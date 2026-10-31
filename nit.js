@@ -4251,6 +4251,7 @@ window.NitNormalizar = NitNormalizar;
                 + '<div class="sb-resumo-tit">ATENDIDOS</div><div class="sb-atendidos">'
                 + '<span class="sb-at-vl">VIA LIVRE <b id="sb-at-vl">0</b></span><span class="sb-at-amc">AMC <b id="sb-at-amc">0</b></span></div>';
             (chk || ver || bal).insertAdjacentElement('afterend', bl);
+            let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => this.renderResumo(), 200); });
         },
         // os mesmos cards do total de Ocorrências (data de referência de hoje, em qualquer coluna)
         renderResumo() {
@@ -4262,10 +4263,8 @@ window.NitNormalizar = NitNormalizar;
             cards.forEach(c => { const k = (c.dataset.tipo || '').trim().toUpperCase() || 'SEM CAUSA'; cont[k] = (cont[k] || 0) + 1; });
             const lista = Object.entries(cont).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
             const max = lista.length ? lista[0][1] : 1;
-            // até 4 linhas; o resto vira "+N outras" (a soma continua igual a Ocorrências)
-            const MAX = 4, mostrar = lista.length > MAX ? lista.slice(0, MAX - 1) : lista;
-            const resto = lista.slice(mostrar.length), nResto = resto.reduce((a, x) => a + x[1], 0);
-            if (resto.length) mostrar.push([`+${resto.length} OUTRAS`, nResto, resto.map(x => `${x[0]} ${x[1]}`).join(' · ')]);
+            // todas as causas do dia (especificação de 22/10/2026); nada é agrupado
+            const mostrar = lista;
             box.replaceChildren(...mostrar.map(([c, n, dica]) => {
                 const d = document.createElement('div'); d.className = 'sb-causa';
                 const barra = document.createElement('i'); barra.style.width = dica ? '0' : `${Math.min(100, Math.round(n / max * 100))}%`;   // "+N outras" sem barra (não é uma causa)
@@ -4275,6 +4274,10 @@ window.NitNormalizar = NitNormalizar;
                 d.append(barra, a, b); return d;
             }));
             if (!lista.length) { const d = document.createElement('div'); d.className = 'sb-causa sb-causa-vazio'; d.textContent = 'nenhuma ocorrência hoje'; box.append(d); }
+            // não coube na tela (muitas causas ou tela baixa)? as mesmas causas viram etiquetas lado a lado — nenhuma some
+            box.classList.remove('sb-causas-etiquetas');
+            const corpo = document.querySelector('#sb-sec-saida .sb-body');
+            if (corpo && corpo.clientHeight && corpo.scrollHeight > corpo.clientHeight + 1) box.classList.add('sb-causas-etiquetas');
             const passou = (c, rot, col) => !!c.closest(col) || (c.dataset.colunaN || '').includes(rot);
             const vl = cards.filter(c => passou(c, 'VIA LIVRE', '#coluna-vl')).length;
             const amc = cards.filter(c => passou(c, 'AMC', '#coluna-amc')).length;
