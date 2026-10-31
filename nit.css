@@ -2248,3 +2248,45 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
 .sb-atendidos span { flex: 1; font-size: 12px; font-weight: 700; padding: 6px 8px; border-radius: 6px; text-align: center; white-space: nowrap; }
 .sb-at-vl { color: #fb923c; background: rgba(251,146,60,.12); border: 1px solid rgba(251,146,60,.35); }
 .sb-at-amc { color: #60a5fa; background: rgba(96,165,250,.12); border: 1px solid rgba(96,165,250,.35); }
+
+/* 14.1: tela pequena / zoom do Windows (125%) — nada quebra linha no topo e a barra lateral cabe sem rolar */
+.nav-right > * { white-space: nowrap; flex-shrink: 0; }
+.nav-right #nit-operador-badge { flex-shrink: 1; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+@media (max-width: 1600px) {
+  #btn-busca-global { width: min(22vw, 260px); }
+  .nav-right #nit-operador-badge { max-width: 200px; }
+}
+@media (max-width: 1400px) {
+  .nav-right #nit-operador-badge { display: none !important; }
+  #btn-busca-global kbd { display: none; }
+}
+.sidebar { overflow: hidden; }
+#sb-sec-saida { flex: 1; min-height: 0; display: flex; flex-direction: column; border-bottom: 0; }
+/* só em tela muito baixa (menos de ~650 px úteis) a SAÍDA rola, com barra fina */
+#sb-sec-saida .sb-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+@media (max-height: 880px) {
+  .sb-ring-outer { width: 156px; height: 156px; }
+  .sb-ring-inner { width: 144px; height: 144px; }
+  .sb-circulo { width: 128px; height: 128px; }
+  .sb-inner-circulo { padding: 0 8px 8px; }
+  .sb-section-header { height: 32px; }
+  .sb-inner { padding: 6px 12px 8px; gap: 6px; }
+  .balanco-compacto { padding: 4px 0 6px; }
+  .sb-ultimo { margin-bottom: 0; }
+  .sb-resumo { margin-top: 4px; padding: 8px 10px; }
+  .sb-causa { padding: 2px 6px; margin-bottom: 2px; }
+  .sb-atendidos span { padding: 4px 6px; }
+}
+@media (max-height: 720px) {
+  .sb-ring-outer { width: 112px; height: 112px; }
+  .sb-ring-inner { width: 102px; height: 102px; }
+  .sb-circulo { width: 90px; height: 90px; }
+  .sb-circulo #relatorio-bruto-input { font-size: 11px; padding: 12px 8px; }
+  #sb-sec-saida .form-check { margin: 0; }
+  #sb-sec-saida #btn-visualizar-relatorio { margin-top: 4px; min-height: 0; padding: 6px; }
+  .sb-resumo-tit { margin: 0 0 4px; }
+  .sb-causa { padding: 1px 6px; }
+  .sb-resumo { padding: 6px 10px; }
+  #sb-sec-saida .sb-section-header { height: 26px; }
+}
+.sb-causa-outras span { color: #94a3b8; font-style: italic; }

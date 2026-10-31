@@ -1318,7 +1318,8 @@
             setTimeout(() => NitProcessamento.verificar(), 800);
             try { NitAdmin.verificar(); } catch (e) { /* não bloqueia */ }
             try { NitPlanilha.iniciar(); } catch (e) { /* não bloqueia */ }
-            try { NitFirebase.db.ref('meta/ultimo_processamento').on('value', sn => NitSidebar.ultimo(sn.val()), () => {}); } catch (e) { /* não bloqueia */ }
+            try { NitFirebase.db.ref('meta/ultimo_processamento').on('value', sn => NitSidebar.ultimo(sn.val(), 'proc'), () => {});
+                  NitFirebase.db.ref('meta/planilha_processada').on('value', sn => NitSidebar.ultimo(sn.val(), 'planilha'), () => {}); } catch (e) { /* não bloqueia */ }
         },
 
         // ── Logout ────────────────────────────────────────────────────────
@@ -4261,11 +4262,16 @@ window.NitNormalizar = NitNormalizar;
             cards.forEach(c => { const k = (c.dataset.tipo || '').trim().toUpperCase() || 'SEM CAUSA'; cont[k] = (cont[k] || 0) + 1; });
             const lista = Object.entries(cont).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
             const max = lista.length ? lista[0][1] : 1;
-            box.replaceChildren(...lista.map(([c, n]) => {
+            // até 4 linhas; o resto vira "+N outras" (a soma continua igual a Ocorrências)
+            const MAX = 4, mostrar = lista.length > MAX ? lista.slice(0, MAX - 1) : lista;
+            const resto = lista.slice(mostrar.length), nResto = resto.reduce((a, x) => a + x[1], 0);
+            if (resto.length) mostrar.push([`+${resto.length} OUTRAS`, nResto, resto.map(x => `${x[0]} ${x[1]}`).join(' · ')]);
+            box.replaceChildren(...mostrar.map(([c, n, dica]) => {
                 const d = document.createElement('div'); d.className = 'sb-causa';
-                const barra = document.createElement('i'); barra.style.width = `${Math.round(n / max * 100)}%`;
+                const barra = document.createElement('i'); barra.style.width = dica ? '0' : `${Math.min(100, Math.round(n / max * 100))}%`;   // "+N outras" sem barra (não é uma causa)
                 const a = document.createElement('span'); a.textContent = c;
                 const b = document.createElement('b'); b.textContent = n;
+                if (dica) { d.title = dica; d.classList.add('sb-causa-outras'); }
                 d.append(barra, a, b); return d;
             }));
             if (!lista.length) { const d = document.createElement('div'); d.className = 'sb-causa sb-causa-vazio'; d.textContent = 'nenhuma ocorrência hoje'; box.append(d); }
@@ -4275,7 +4281,12 @@ window.NitNormalizar = NitNormalizar;
             document.getElementById('sb-at-vl').textContent = vl;
             document.getElementById('sb-at-amc').textContent = amc;
         },
-        ultimo(v) {
+        // último processamento: o registrado no fim do processamento ou, antes dele existir, o da planilha
+        _ult: {},
+        ultimo(v, origem = 'proc') {
+            this._ult[origem] = v || null;
+            const pr = this._ult.proc, pl = this._ult.planilha;
+            v = (pr && pl) ? ((pr.ts || 0) >= (pl.ts || 0) ? pr : { ...pl, auto: true }) : (pr || (pl && { ...pl, auto: true }));
             const el = document.getElementById('sb-ultimo'); if (!el) return;
             const b = el.querySelector('b');
             if (!v || !v.ts) { b.textContent = '—'; el.title = ''; return; }
