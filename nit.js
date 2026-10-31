@@ -970,15 +970,6 @@
         _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
         estaParada() { return !!(this._c && this._c.texto) && (!!this._erro || this._min() >= this.PARADA_MIN); },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
-        // estado no topo, ao lado do ✓ SALVO (mesmo jeito de mostrar estado; não ocupa a barra lateral)
-        _botao() {
-            let b = document.getElementById('nit-planilha-btn'); if (b) return b;
-            const ref = document.getElementById('nit-gravacao-status') || document.getElementById('nit-firebase-status'); if (!ref) return null;
-            b = document.createElement('span'); b.id = 'nit-planilha-btn'; b.setAttribute('role', 'status');
-            b.className = 'nit-planilha-estado';
-            b.addEventListener('click', () => this.processar('mão'));
-            ref.insertAdjacentElement('afterend', b); return b;
-        },
         _faixa(mostrar, texto) {
             let f = document.getElementById('nit-planilha-faixa');
             if (!mostrar) { if (f) f.remove(); document.body.classList.remove('nit-planilha-parada'); return; }
@@ -1014,10 +1005,9 @@
         },
         _render() {
             const c = this._c, tem = !!(c && c.texto);
-            const b = tem ? this._botao() : document.getElementById('nit-planilha-btn');
-            if (!tem) { if (b) b.style.display = 'none'; this._faixa(false); return; }
+            if (!tem) { this._estado = null; this._faixa(false); try { NitSidebar.renderEstado(); } catch (e) {} return; }
             const parada = this.estaParada(), min = this._min();
-            // faixa: fato + ação, sem esperar o operador olhar o botão
+            // faixa: fato + ação, sem esperar o operador olhar a linha de estado
             if (parada) {
                 const desde = NitDiario._hhmm(this._ultimo());
                 this._faixa(true, this._erro ? '⚠ PLANILHA MUDOU DE FORMATO · COLE O RELATÓRIO DO WHATSAPP' : `⚠ PLANILHA PAROU ÀS ${desde} · COLE O RELATÓRIO DO WHATSAPP`);
@@ -1029,21 +1019,11 @@
                 if (voltou) { try { NitDiario.acao('✓ Planilha voltou.'); } catch (e) {} }
                 this._parada = false; if (voltou) this._tituloAtualizar();
             }
-            if (!b) return;
-            b.style.display = '';
             const n = this.novidades(), imp = this._impedimento();
             const precisa = !parada && n > 0 && (!this.AUTO || (imp && imp !== 'sem relatório'));
-            const processando = !parada && !precisa && n > 0;
-            b.classList.toggle('tem-novidade', precisa);
-            b.classList.toggle('parada', parada);
-            b.classList.toggle('processando', processando);
-            const hh = NitDiario._hhmm(c.geradoEm);
-            b.textContent = parada ? '⚠ PLANILHA PAROU'
-                : precisa ? `📋 ${n} NOVIDADE${n > 1 ? 'S' : ''} · PROCESSAR`
-                : processando ? `📋 PLANILHA ${hh} ⏳` : `📋 PLANILHA ${hh}`;
-            b.title = parada ? `A planilha não responde há ${min} min. Cole o relatório do WhatsApp.`
-                : precisa ? `Não processou sozinho (${imp || 'modo manual'}). Clique para processar.`
-                : `Relatório da planilha do CTA, automático. Última mudança às ${hh}. Clique para processar agora.`;
+            this._estado = { parada, min, n, imp, precisa, processando: !parada && !precisa && n > 0,
+                desde: NitDiario._hhmm(this._ultimo()), erro: this._erro };
+            try { NitSidebar.renderEstado(); } catch (e) { /* não bloqueia */ }
         },
         async _talvezProcessar() {
             if (!this.AUTO || this._tentando || this.estaParada()) return;
@@ -4237,11 +4217,14 @@ window.NitNormalizar = NitNormalizar;
             this._montarSaida();
         },
         _montarSaida() {
-            const sec = document.getElementById('sb-sec-saida'); if (!sec || document.getElementById('sb-ultimo')) return;
+            const sec = document.getElementById('sb-sec-saida'); if (!sec || document.getElementById('sb-estado')) return;
             const inner = sec.querySelector('.sb-inner'), bal = inner && inner.querySelector('.balanco-compacto');
             if (!bal) return;
-            const ult = document.createElement('div'); ult.id = 'sb-ultimo'; ult.className = 'sb-ultimo';
-            ult.innerHTML = 'último: <b>—</b>'; bal.insertAdjacentElement('beforebegin', ult);
+            // 14.1 (30/10): o título "SAÍDA" sai; no lugar, UMA linha diz de quando e de onde são os totais
+            sec.querySelector('.sb-section-header')?.remove(); sec.classList.remove('sec-collapsed');
+            const ult = document.createElement('div'); ult.id = 'sb-estado'; ult.className = 'sb-estado'; ult.setAttribute('role', 'status');
+            ult.addEventListener('click', () => { if (window.NitPlanilha && NitPlanilha._c && NitPlanilha._c.texto) NitPlanilha.processar('mão'); });
+            bal.insertAdjacentElement('beforebegin', ult); this.renderEstado();
             const ver = document.getElementById('btn-visualizar-relatorio'), chk = inner.querySelector('.form-check');
             if (ver) bal.insertAdjacentElement('afterend', ver);
             if (chk && ver) ver.insertAdjacentElement('afterend', chk);
@@ -4286,33 +4269,34 @@ window.NitNormalizar = NitNormalizar;
         },
         // último processamento: o registrado no fim do processamento ou, antes dele existir, o da planilha
         _ult: {},
-        ultimo(v, origem = 'proc') {
-            this._ult[origem] = v || null;
+        ultimo(v, origem = 'proc') { this._ult[origem] = v || null; this.renderEstado(); },
+        _fmt(ts) {
+            const d = new Date(ts), hoje = new Date();
+            const mesmoDia = d.toDateString() === hoje.toDateString();
+            return (mesmoDia ? '' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} `) + NitDiario._hhmm(ts);
+        },
+        // a linha de estado: de quando e de onde são os totais (verde), ou o que o operador precisa fazer (amarelo/vermelho)
+        renderEstado() {
+            const el = document.getElementById('sb-estado'); if (!el) return;
             const pr = this._ult.proc, pl = this._ult.planilha;
-            v = (pr && pl) ? ((pr.ts || 0) >= (pl.ts || 0) ? pr : { ...pl, auto: true }) : (pr || (pl && { ...pl, auto: true }));
-            const el = document.getElementById('sb-ultimo'); if (!el) return;
-            const b = el.querySelector('b');
-            if (!v || !v.ts) { b.textContent = '—'; el.title = ''; return; }
-            const d = new Date(v.ts);
-            b.textContent = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${NitDiario._hhmm(v.ts)}`;
-            el.title = `Último relatório processado (${v.por || '—'}${v.auto ? ', automático' : ''})`;
-        },
-
-        toggle()   { const sb = document.getElementById('sidebar'); if (sb) this._setSidebar(!sb.classList.contains('collapsed')); },
-        expandir() { this._setSidebar(false); },
-
-        _setSidebar(collapsed) {
-            const sb = document.getElementById('sidebar');
-            if (!sb) return;
-            sb.classList.toggle('collapsed', collapsed);
-            localStorage.setItem(this._KEY, collapsed ? '1' : '0');
-            const btn = document.getElementById('btn-sb-toggle');
-            if (btn) btn.setAttribute('aria-expanded', String(!collapsed));
-        },
-
-        toggleSec(id) {
-            const sec = document.getElementById(id);
-            if (sec) sec.classList.toggle('sec-collapsed');
+            const u = (pr && pl) ? ((pr.ts || 0) >= (pl.ts || 0) ? pr : { ...pl, auto: true }) : (pr || (pl && { ...pl, auto: true }));
+            const e = (window.NitPlanilha && NitPlanilha._estado) || null;
+            let txt, cls = 'ok', dica = '';
+            if (e && e.parada) {
+                cls = 'parada';
+                txt = e.erro ? '⚠ PLANILHA MUDOU DE FORMATO · COLE O RELATÓRIO' : `⚠ PLANILHA PAROU ${e.desde} · COLE O RELATÓRIO`;
+                dica = e.erro ? `A planilha do CTA mudou de formato (${e.erro}).` : `A planilha não responde há ${e.min} min.`;
+            } else if (e && e.precisa) {
+                cls = 'precisa'; txt = `📋 ${e.n} NOVIDADE${e.n > 1 ? 'S' : ''} · PROCESSAR`;
+                dica = `Não processou sozinho (${e.imp || 'modo manual'}). Clique para processar.`;
+            } else if (e && e.processando) {
+                cls = 'processando'; txt = '⏳ ATUALIZANDO…';
+            } else if (u && u.ts) {
+                txt = `✓ ATUALIZADO ${this._fmt(u.ts)} · ${u.auto ? 'PLANILHA' : 'COLADO'}`;
+                dica = `${u.auto ? 'Relatório da planilha do CTA, automático' : 'Relatório colado'}${u.por ? ` (${u.por})` : ''}.` + (e ? ' Clique para processar a planilha agora.' : '');
+            } else { cls = 'vazio'; txt = 'SEM ATUALIZAÇÃO HOJE'; }
+            el.className = `sb-estado ${cls}`; el.textContent = txt; el.title = dica;
+            el.style.cursor = (window.NitPlanilha && NitPlanilha._c && NitPlanilha._c.texto) ? 'pointer' : 'default';
         },
     };
     window.NitSidebar = NitSidebar;

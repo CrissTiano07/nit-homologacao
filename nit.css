@@ -2233,8 +2233,12 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
 @keyframes nitToastPisca { 50% { outline-color: #ef4444; filter: brightness(1.25); } }
 
 /* 14.1: barra lateral (especificação de 22/10/2026) */
-.sb-ultimo { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
-.sb-ultimo b { color: #e2e8f0; }
+/* 14.1: linha de estado no lugar do título SAÍDA */
+.sb-estado { font-size: 12px; font-weight: 800; letter-spacing: .02em; color: #22c55e; padding: 4px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-estado.processando, .sb-estado.precisa { color: #f59e0b; }
+.sb-estado.precisa { animation: nitPlanilhaEstado 1s ease-in-out 8; }
+.sb-estado.parada { color: #ef4444; animation: nitPlanilhaEstado 1s ease-in-out infinite; }
+.sb-estado.vazio { color: #64748b; }
 #sb-sec-saida #btn-visualizar-relatorio { margin-top: 8px; }
 .sb-resumo { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(148,163,184,.06); border: 1px solid rgba(148,163,184,.15); }
 .sb-resumo-tit { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #94a3b8; margin: 2px 0 6px; }
@@ -2272,7 +2276,6 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
   .sb-section-header { height: 32px; }
   .sb-inner { padding: 6px 12px 8px; gap: 6px; }
   .balanco-compacto { padding: 4px 0 6px; }
-  .sb-ultimo { margin-bottom: 0; }
   .sb-resumo { margin-top: 4px; padding: 8px 10px; }
   .sb-causa { padding: 1px 6px; margin-bottom: 1px; font-size: 11.5px; line-height: 1.35; }
   .sb-atendidos span { padding: 4px 6px; }
