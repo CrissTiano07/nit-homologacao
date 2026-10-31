@@ -970,10 +970,11 @@
             db.ref('fonte_planilha/conteudo').on('value', s => { const ant = this._c; this._c = s.val(); this._avisarMudanca(ant, this._c); this._render(); this._talvezProcessar(); }, () => {});
             db.ref('fonte_planilha/erro').on('value', s => { this._erro = s.val(); this._render(); }, () => {});
             // sem conexão com o banco (internet caiu, aba congelada pelo navegador): não é a planilha que parou
-            db.ref('.info/connected').on('value', s => { this._offline = s.val() === false; this._render(); }, () => {});
+            db.ref('.info/connected').on('value', s => { const off = s.val() === false; if (!off && this._offline) this._acordou(); this._offline = off; this._render(); }, () => {});
             this._titulo = document.title;
-            document.addEventListener('visibilitychange', () => { if (!document.hidden) { this._fora = 0; this._tituloAtualizar(); } });
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) { this._acordou(); this._fora = 0; this._tituloAtualizar(); } });
             window.addEventListener('focus', () => { this._fora = 0; this._tituloAtualizar(); });
+            this._acordou();
             document.addEventListener('click', () => { try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {} }, { once: true });
             db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); this._talvezProcessar(); }, () => {});
             db.ref('meta/planilha_processada').on('value', s => { this._proc = s.val(); this._render(); }, () => {});
@@ -982,8 +983,21 @@
         _agora() { return Date.now() + (this._offset || 0); },
         _ultimo() { return Math.max(this._verif || 0, (this._c && this._c.geradoEm) || 0); },
         _min() { return Math.floor((this._agora() - this._ultimo()) / 60000); },
-        estaParada() { return !!(this._c && this._c.texto) && !this._offline && (!!this._erro || this._min() >= this.PARADA_MIN); },
-        semConexao() { return !!(this._c && this._c.texto) && this._offline; },
+        // 14.2 (31/10): sem "pisca-pisca" de parou/voltou. Ao abrir, ao voltar à aba ou ao reconectar, espera 45 s pelos
+        // dados novos antes de julgar (a aba congelada acorda com dados velhos). E um estado só vale se durar 30 s.
+        GRACA_MS: 45000, CONFIRMA_MS: 30000,
+        _acordou() { this._graca = Date.now() + this.GRACA_MS; this._cand = {}; },
+        _firme(nome, agora) {
+            this._cand = this._cand || {};
+            if (!agora) { this._cand[nome] = 0; return false; }
+            if (Date.now() < (this._graca || 0)) return false;
+            this._cand = this._cand || {};
+            if (!this._cand[nome]) { this._cand[nome] = Date.now(); setTimeout(() => this._render(), this.CONFIRMA_MS + 500); return false; }
+            return Date.now() - this._cand[nome] >= this.CONFIRMA_MS;
+        },
+        _paradaBruta() { return !!(this._c && this._c.texto) && !this._offline && (!!this._erro || this._min() >= this.PARADA_MIN); },
+        estaParada() { return this._erro ? !!(this._c && this._c.texto) && !this._offline : this._firme('parada', this._paradaBruta()); },
+        semConexao() { return this._firme('semNet', !!(this._c && this._c.texto) && this._offline); },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
         _faixa(mostrar, texto) {
             let f = document.getElementById('nit-planilha-faixa');
@@ -1045,7 +1059,7 @@
             try { NitSidebar.renderEstado(); } catch (e) { /* não bloqueia */ }
         },
         async _talvezProcessar() {
-            if (!this.AUTO || this._tentando || this.estaParada()) return;
+            if (!this.AUTO || this._tentando || this._paradaBruta() || this._offline) return;
             const c = this._c; if (!c || !c.texto) return;
             // janela que pegou a vez e travou: depois de 2 min, outra assume (uma vez por versão)
             const p = this._proc, travada = this._jaProcessada() && p.janela !== this._janela && !p.retomado
