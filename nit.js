@@ -578,7 +578,13 @@
             const id = card.dataset.eventoid;
             const marca = { ...this._porQuem(), fim: `${dataFim} ${horaFim}` };
             card.dataset.normManual = JSON.stringify(marca);
-            this._gravar(id, { normManual: marca });
+            // 14.2 (BR-PLA-002): normalizou com data de um dia anterior → a ocorrência é daquele dia (não conta hoje)
+            const k = d => { const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}${m[2]}${m[1]}` : ''; };
+            const hoje = NitData.hoje();
+            const doDia = k(dataFim) && k(dataFim) < k(hoje) && card.dataset.datareferencia === hoje;
+            if (doDia) card.dataset.datareferencia = dataFim;
+            this._gravar(id, doDia ? { normManual: marca, dataReferencia: dataFim } : { normManual: marca });
+            if (doDia) { try { Semaforo.atualizarPainel(); } catch (e) {} }
             const body = card.querySelector('.card-body'); if (body) body.innerHTML = Semaforo._buildBodyHTML(card.dataset);
             this._registrarAcao(`${card.dataset.codigo} normalizado à mão às ${horaFim}`);
             if (this._normalizandoNit10 === id) {
@@ -652,7 +658,13 @@
             const e = { ts: Date.now(), por: NitLogin.operador || 'anon', ...entrada };
             NitFirebase.exec((db, ref, update, push) => push(ref(db, `auditoria/${this._dia()}`), e));
         },
-        acao(texto) { this._gravar({ tipo: 'acao', linhas: [texto] }); },
+        acao(texto) {
+            // a mesma ação repetida em menos de 1 minuto (clique duplo, evento duplicado) entra uma vez só
+            const agora = Date.now();
+            if (this._ultAcao && this._ultAcao.t === texto && agora - this._ultAcao.ts < 60000) return;
+            this._ultAcao = { t: texto, ts: agora };
+            this._gravar({ tipo: 'acao', linhas: [texto] });
+        },
         processamento({ totais, aplic, itensNovos, resolvidos, horasLidas, codigosLidos }) {
             const L = [];
             const j = xs => [...new Set(xs || [])].join(', ');
@@ -1125,6 +1137,39 @@
             const s = document.getElementById('sb-sec-saida'); if (!s) return;
             s.scrollIntoView({ block: 'center' }); s.classList.add('nit-planilha-mudou'); setTimeout(() => s.classList.remove('nit-planilha-mudou'), 6000);
         },
+        // 14.2 (BR-PLA-002): card que estava pendente à meia-noite (virou herança de hoje) e que o CTA encerrou
+        // DEPOIS da meia-noite com hora de ontem (ex.: 23:59). A planilha diz quando: o NIT fecha no dia certo,
+        // sem perguntar e sem contar hoje. Só com tudo batendo: mesmo código, mesmo início, fim antes de hoje.
+        _fecharOntem(c) {
+            const lista = (c && c.ontem) || []; if (!lista.length) return;
+            const hoje = NitData.hoje(), chave = d => { const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}${m[2]}${m[1]}` : ''; };
+            const deHoje = new Set((c.itens || []).map(x => `${x.c}|${x.i}`));
+            for (const x of lista) {
+                if (deHoje.has(`${x.c}|${x.i}`)) continue;
+                const [df, hf] = String(x.f).split(' ');
+                if (!df || !hf || !(chave(df) < chave(hoje))) continue;
+                const card = [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${x.c}"]`)]
+                    .find(el => (el.dataset.inicio || '').trim() === x.i);
+                if (!card) continue;
+                const norm = !!card.closest('#coluna-normalizados');
+                let manual = {}; try { manual = JSON.parse(card.dataset.normManual || '{}') || {}; } catch (e) {}
+                // já está certo (normalizado pela fonte e no dia do fim)? nada a fazer
+                if (norm && !manual.ts && card.dataset.datareferencia === df && card.dataset.data_fim === df && card.dataset.hora_fim === hf) continue;
+                if (norm && !manual.ts && card.dataset.datareferencia !== hoje) continue;   // normalizado de outro dia: não mexe
+                const id = card.dataset.eventoid;
+                let dec = {}; try { dec = JSON.parse(card.dataset.decisoes || '{}') || {}; } catch (e) {}
+                delete dec['NIT-10'];
+                NitFirebase.exec((db, ref, update) => update(ref(db, `kanban/${id}`), {
+                    coluna: 'coluna-normalizados', status: 'NORMALIZADO', data_fim: df, hora_fim: hf, fim: null, pl: 'norm',
+                    ts_norm: Date.now(), dataReferencia: df, normManual: null, 'decisoes/NIT-10': null }));
+                Object.assign(card.dataset, { coluna: 'coluna-normalizados', status: 'NORMALIZADO', data_fim: df, hora_fim: hf, fim: `${df} ${hf}`,
+                    pl: 'norm', datareferencia: df, normManual: '{}', decisoes: JSON.stringify(dec) });
+                document.querySelector('#coluna-normalizados .kanban-cards-container')?.prepend(card);
+                const b = card.querySelector('.card-body'); if (b) b.innerHTML = Semaforo._buildBodyHTML(card.dataset);
+                NitDiario.acao(`✓ ${x.c} normalizou ontem (${df.slice(0, 5)}) às ${hf}: atualizado na planilha depois da meia-noite. Não conta hoje.`);
+            }
+            try { Semaforo.atualizarPainel(); } catch (e) {}
+        },
         processar(como) {
             const c = this._c; if (!c || !c.texto) return;
             const ta = document.getElementById('relatorio-bruto-input'), go = document.getElementById('btn-processar');
@@ -1132,6 +1177,7 @@
             if (como === 'mão') {
                 try { NitFirebase.db.ref('meta/planilha_processada').set({ assinatura: c.assinatura || '', janela: this._janela, por: NitLogin.operador || 'anon', ts: Date.now() }); } catch (e) {}
             }
+            try { this._fecharOntem(c); } catch (e) { console.warn('[NIT] fechar ontem', e); }
             ta.value = c.texto;
             NitDiario.acao(`📋 Relatório da planilha (${NitDiario._hhmm(c.geradoEm)}) processado${como === 'auto' ? ' sozinho' : ''}.`);
             this._processandoAuto = como === 'auto';
@@ -5592,6 +5638,7 @@ const NitCentral = {
             ?.addEventListener('click', e => { if (e.target === e.currentTarget) this.fechar(); });
     },
 };
+window.NitCentral = NitCentral;   // 14.1: exposto para a bateria (trajetória VIA LIVRE/AMC)
 
     // ══════════════════════════════════════════════════════════════════
 // NitViradaDia — versão compatível com NitProcessamento
