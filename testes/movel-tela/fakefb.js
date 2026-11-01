@@ -43,5 +43,10 @@
     if (F.credErro) return Promise.reject(Object.assign(new Error(F.credErro), { code: F.credErro }));
     const p = JSON.parse(atob(c.idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
     F.usuario = { email: p.email }; authObs.forEach(cb => cb(F.usuario)); return Promise.resolve(); };
-  window.firebase = { apps: [], initializeApp(c) { this.apps.push(c); F.cfg = c; }, auth, database: () => ({ ref }) };
+  const semApp = () => { throw Object.assign(new Error("No Firebase App '[DEFAULT]' has been created"), { code: 'app/no-app' }); };
+  const fb = { apps: [], initializeApp(c) { fb.apps.push(c); F.cfg = c; } };
+  const authStrict = () => (fb.apps.length ? auth() : semApp());
+  authStrict.GoogleAuthProvider = auth.GoogleAuthProvider;
+  fb.auth = authStrict; fb.database = () => (fb.apps.length ? { ref } : semApp());
+  window.firebase = fb;
 })();

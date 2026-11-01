@@ -169,6 +169,15 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     reg('E20', 'Arquivo real: homologação já vai ao Google com o ID do cliente dela; produção (sem ID) continua na janela', [
       ck(g.pedidos[0]?.client_id === '865942699083-attv4bvurge6i2efsiv8seat4sc8ri33.apps.googleusercontent.com' && !(await p.evaluate(() => window.__FB.janelas)), `client_id: ${g.pedidos[0]?.client_id}`),
     ]); await ctx.close(); }
+  { const ctx = await b.newContext({ isMobile: true, userAgent: IOS });
+    await ctx.route('**/*', r => { const u = new URL(r.request().url());
+      if (u.hostname === 'nit.teste') return r.fulfill({ path: path.join(REPO, path.basename(u.pathname)) });
+      return r.abort(); });   // Firebase (gstatic) não carrega
+    const p = await ctx.newPage(); await p.goto('http://nit.teste/nit-homologacao/movel.html'); await p.waitForTimeout(500);
+    const st = await p.$eval('#m-login-status', x => x.textContent), dg = await p.$eval('#m-diag', x => x.textContent);
+    reg('E21', 'Firebase não carregou (rede/bloqueador): a tela diz isso; versão visível', [
+      ck(/Firebase não carregou/.test(st), st), ck(/^movelhomolog\d+/.test(dg), `linha da versão: ${dg}`),
+    ]); await ctx.close(); }
   // ── Ir e voltar pela própria página (com o ID do cliente configurado)
   { const g = { email: 'teste.adm@gmail.com', pedidos: [] };
     const { p, ctx, erros } = await abrir(b, { ...base, usuario: null }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);

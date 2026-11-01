@@ -13,12 +13,14 @@
 <script>
     // Um arquivo só para os dois sites: o endereço decide o banco (homologação nunca toca a produção).
     window.NIT_HOMOLOG = /nit-homologacao/.test(location.pathname);
-    window.NIT_MOVEL_VERSAO = 'movelhomolog6';
+    window.NIT_MOVEL_VERSAO = 'movelhomolog7';
     // "ID do cliente da Web" de cada projeto (Firebase → Authentication → Google → Configuração do SDK da Web).
     // Vazio = entra pela janela do Google (como o computador). Preenchido = ir e voltar pela própria página.
     window.NIT_GOOGLE_CLIENT = window.NIT_HOMOLOG ? '865942699083-attv4bvurge6i2efsiv8seat4sc8ri33.apps.googleusercontent.com' : '';   // produção: só depois do "autorizo"
-    window.addEventListener('DOMContentLoaded', () => {
-        const cfg = window.NIT_HOMOLOG ? {
+    // 01/11: a configuração fica pronta já aqui; quem liga o Firebase é o movel.js, ANTES de usá-lo.
+    // (Antes ligava no DOMContentLoaded da janela, que dispara DEPOIS do da página onde o movel.js usava o Firebase:
+    //  o botão ficava sem reação. O Firebase falso dos testes não reclamava; agora reclama, como o real.)
+    window.NIT_FIREBASE_CFG = window.NIT_HOMOLOG ? {
             apiKey: "AIzaSyDEAxzkLdtdTINDbu5b6WLvBDuE_FlQhus", authDomain: "nit-homologacao.firebaseapp.com",
             databaseURL: "https://nit-homologacao-default-rtdb.firebaseio.com/", projectId: "nit-homologacao",
             storageBucket: "nit-homologacao.firebasestorage.app",
@@ -27,9 +29,7 @@
             databaseURL: "https://nit-operacional-default-rtdb.firebaseio.com/", projectId: "nit-operacional",
             storageBucket: "nit-operacional.appspot.com",
         };
-        if (window.firebase && !firebase.apps.length) firebase.initializeApp(cfg);
-        if (window.NIT_HOMOLOG) document.body.classList.add('m-homolog');
-    });
+    window.addEventListener('DOMContentLoaded', () => { if (window.NIT_HOMOLOG) document.body.classList.add('m-homolog'); });
 </script>
 <style>
 :root{--s0:#080c12;--s1:#0e1620;--s2:#151f2c;--b1:rgba(100,160,230,.12);--tx1:#e2eefa;--tx2:#7f9bb8;
@@ -95,7 +95,7 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <h1>🚦 NIT · SEMÁFOROS</h1>
     <button id="m-btn-login" type="button">Entrar com Google</button>
     <p id="m-login-status"></p>
-    <small id="m-diag"></small>
+    <small id="m-diag">movelhomolog7 (html)</small>
     <div id="m-ajuda" hidden>
         <p id="m-ajuda-ios">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br>Toque em <b>⬆︎</b> (compartilhar) → <b>Abrir no Safari</b> e entre por lá.</p>
         <p id="m-ajuda-android">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br><a id="m-abrir-chrome" class="m-btn2" href="#">Abrir no Chrome</a></p>
@@ -115,7 +115,7 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <main id="m-lista"><p class="m-vazio">Carregando...</p></main>
     <footer><a id="m-computador" href="index.html?versao=computador">Abrir versão computador</a><button id="m-sair" type="button">Sair</button></footer>
 </section>
-<script defer src="movel.js?v=movelhomolog6"></script>
+<script defer src="movel.js?v=movelhomolog7"></script>
 <script>
     // cabeçalho do grupo gruda logo abaixo do topo (a altura do topo muda com a fonte do aparelho)
     window.addEventListener('DOMContentLoaded', () => {

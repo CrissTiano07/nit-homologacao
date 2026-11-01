@@ -349,14 +349,27 @@
         lista.replaceChildren(frag);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    // 01/11: nenhum erro mudo na partida (sem isto, uma falha deixava o botão sem reação e a tela sem explicação)
+    function erroNaTela(onde, e, sempre = true) {
+        const msg = `${onde}: ${(e && (e.code || e.message)) || e}`;
+        try { console.error('[NitMovel]', msg, e); passo(`erro ${msg}`); } catch (x) { /* segue */ }
+        // erro solto da página: só aparece na tela de login e sem apagar outra mensagem
+        const st = document.getElementById('m-login-status'), naLista = !document.getElementById('m-app')?.hidden;
+        if (st && (sempre || (!naLista && !st.textContent))) st.textContent = `Falha ao iniciar (${msg}). Atualize a página.`;
+    }
+    window.addEventListener('error', ev => erroNaTela('página', ev.error || ev.message, false));
+    window.addEventListener('unhandledrejection', ev => erroNaTela('página', ev.reason, false));
+    document.addEventListener('DOMContentLoaded', () => { try { iniciarPagina(); } catch (e) { erroNaTela('início', e); } });
+    function iniciarPagina() {
+        const ult0 = ls.get(CH_PASSO); if ($('m-diag')) $('m-diag').textContent = `${window.NIT_MOVEL_VERSAO || ''}${ult0 ? ' · ' + ult0 : ''}`;
+        if (!window.firebase || !firebase.initializeApp) throw new Error('Firebase não carregou (rede ou bloqueador)');
+        if (!firebase.apps.length) firebase.initializeApp(window.NIT_FIREBASE_CFG);
         S.db = firebase.database();
         $('m-btn-login').addEventListener('click', entrar);
         $('m-busca').addEventListener('input', e => { S.q = e.target.value; render(); });
         $('m-computador').addEventListener('click', e => { e.preventDefault(); location.href = 'index.html?versao=computador'; });
         $('m-sair').addEventListener('click', () => firebase.auth().signOut().then(() => location.reload()));
         $('m-copiar').addEventListener('click', copiarLink);
-        const ult = ls.get(CH_PASSO); if ($('m-diag')) $('m-diag').textContent = `${window.NIT_MOVEL_VERSAO || ''}${ult ? ' · ' + ult : ''}`;
         let retorno = false;
         const pronto = tratarRetorno().then(v => { retorno = v; }).catch(() => {});
         firebase.auth().onAuthStateChanged(async u => {
@@ -364,6 +377,6 @@
             if (u) verificar(u);
             else if (!retorno) { tela('m-login', ''); $('m-btn-login').disabled = false; }
         });
-    });
+    }
     raiz.NitMovel = { S, render, Puro };
 })(typeof window !== 'undefined' ? window : globalThis);
