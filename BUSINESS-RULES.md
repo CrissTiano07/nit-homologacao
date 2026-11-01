@@ -1183,7 +1183,13 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - **01/11: a janela também falhou no Safari do iPhone** (movelhomolog4, versão conferida no repositório). Adotado o "ir e voltar" pela própria página: o Google devolve o comprovante (`id_token`, fluxo implícito do OpenID Connect) ao próprio `movel.html`; o NIT confere `state` e `nonce` (validade 10 min), tira o comprovante do endereço e abre a sessão no Firebase com `signInWithCredential`. Mesmo login do Google, mesma lista, mesmas regras. Não passa pelo `firebaseapp.com`.
   - Precisa de: "ID do cliente da Web" de cada projeto em `NIT_GOOGLE_CLIENT` (movel.html) e, no Google Cloud, a origem `https://crisstiano07.github.io` e o endereço de volta do `movel.html` autorizados. Vazio = janela do Google (como antes).
   - Rastro do login na tela de entrar (versão + último passo, guardado no aparelho) para diagnóstico por print.
-- **Não grava nada no banco.** Lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
+- **Telas (01/11, "UX mobile first", pedido do Cristiano):** abas fixas embaixo, ao alcance do polegar: **Ocorrências · Resumo · ADM**.
+  - **Ocorrências:** uma lista por situação (Aguardando, Via Livre, AMC, Sem nec., Normalizados, Todos), **lado a lado**. Arrastar o dedo para o lado troca a lista, e o filtro de cima acompanha; tocar no filtro leva à lista. Cada lista rola para baixo sozinha. A aba mostra o número de aguardando.
+  - **Resumo:** totais do dia, quantos em cada situação e CAUSAS DO DIA (mesmo critério da barra lateral do computador).
+  - **ADM:** 🧹 Limpar painel, ↩ Restaurar painel (só quando há cópia não restaurada), Abrir versão computador, Sair e a versão. As ações perigosas ficam longe da lista, para ninguém tocar sem querer ao rolar.
+  - **Confirmação por baixo da tela (acima do teclado):** é preciso digitar LIMPAR ou RESTAURAR. O destaque fica em Cancelar; sem a palavra, nem o botão nem o Enter fazem nada.
+- **Limpar/Restaurar pelo celular (01/11):** mesmo efeito do computador (BR-ADM-001): cards e avisos, cópia na lixeira (as 5 últimas), "🧹 Painel limpo (N cards). Cópia guardada." na LINHA DO TEMPO, os computadores abertos esvaziam na hora. No celular, a LINHA DO TEMPO entra na mesma gravação (tudo ou nada). Paridade testada contra o NIT de computador (`testes/bateria-movel-paridade.js`). Falha: "Nada foi apagado", com o código.
+- **Grava no banco só o LIMPAR e o RESTAURAR do ADM.** Fora isso, lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
 - **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.
 - **Fica para depois:** copiar status para o grupo (restrito); despacho de equipe pelo supervisor (fase 2); perfil por usuário.
 

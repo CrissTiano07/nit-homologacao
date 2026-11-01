@@ -13,7 +13,7 @@
 <script>
     // Um arquivo só para os dois sites: o endereço decide o banco (homologação nunca toca a produção).
     window.NIT_HOMOLOG = /nit-homologacao/.test(location.pathname);
-    window.NIT_MOVEL_VERSAO = 'movelhomolog7';
+    window.NIT_MOVEL_VERSAO = 'movelhomolog8';
     // "ID do cliente da Web" de cada projeto (Firebase → Authentication → Google → Configuração do SDK da Web).
     // Vazio = entra pela janela do Google (como o computador). Preenchido = ir e voltar pela própria página.
     window.NIT_GOOGLE_CLIENT = window.NIT_HOMOLOG ? '865942699083-attv4bvurge6i2efsiv8seat4sc8ri33.apps.googleusercontent.com' : '';   // produção: só depois do "autorizo"
@@ -50,26 +50,32 @@ button{font:inherit;color:inherit;cursor:pointer}
 #m-diag{color:var(--tx2);opacity:.6;font-size:11px}
 #m-ajuda .m-dica{color:var(--tx2);font-size:12px}
 .m-btn2{display:inline-block;margin-top:8px;background:var(--s2);color:var(--tx1);border:1px solid var(--b1);border-radius:20px;padding:10px 18px;font-weight:700;text-decoration:none}
-/* topo */
-header{position:sticky;top:0;z-index:3;background:var(--s0);padding:12px 16px 0;border-bottom:1px solid var(--b1)}
+/* app: tela inteira, topo fixo, conteúdo no meio, abas embaixo (polegar) */
+#m-app{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--s0)}
+header{flex:none;background:var(--s0);padding:12px 16px 0;border-bottom:1px solid var(--b1)}
 .m-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .m-top b{font-size:17px;letter-spacing:.04em;white-space:nowrap}
 .m-top span{font-size:12px;color:var(--tx2);white-space:nowrap}
-.m-linha{display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:12px}
+.m-linha{display:flex;justify-content:space-between;gap:8px;margin:4px 0 10px;font-size:12px}
 .m-estado{font-weight:800;color:var(--grn);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .m-estado.m-ruim{color:var(--red)}
 #m-resumo{color:var(--tx2);font-weight:600;white-space:nowrap}
-#m-busca{width:100%;margin:10px 0 8px;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:9px 14px;color:var(--tx1);font:inherit;font-size:16px;outline:none}
+#m-busca{width:100%;margin:0 0 8px;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:10px 14px;color:var(--tx1);font:inherit;font-size:16px;outline:none}
 #m-busca::placeholder{color:var(--tx2)}
 #m-busca:focus{border-color:var(--blu)}
-#m-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+#m-chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
 #m-chips::-webkit-scrollbar{display:none}
-.m-chip{position:relative;flex:none;border:1px solid var(--b1);background:var(--s1);border-radius:16px;padding:6px 12px;font-size:13px;font-weight:700}
+.m-chip{position:relative;flex:none;min-height:40px;border:1px solid var(--b1);background:var(--s1);border-radius:20px;padding:0 14px;font-size:13px;font-weight:700}
 .m-chip b{margin-left:5px;color:var(--c)}
 .m-chip.on{background:var(--c);border-color:var(--c);color:#fff}.m-chip.on b{color:#fff}
-.m-chip-novo{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--amb);border:2px solid var(--s0)}
-/* lista */
-.m-gh{position:sticky;top:var(--topo,150px);z-index:2;background:var(--s0);display:flex;justify-content:space-between;gap:8px;padding:12px 16px 6px;font-size:12px;font-weight:800;letter-spacing:.07em;color:var(--c)}
+.m-chip-novo{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--amb);border:2px solid var(--s0)}
+main{flex:1;min-height:0;position:relative}
+.m-vista{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* listas lado a lado: arrasta para o lado e troca de lista; cada uma rola para baixo sozinha */
+#m-paginas{position:absolute;inset:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
+#m-paginas::-webkit-scrollbar{display:none}
+.m-pag{flex:0 0 100%;height:100%;overflow-y:auto;scroll-snap-align:start;scroll-snap-stop:always;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;padding-bottom:12px}
+.m-gh{position:sticky;top:0;z-index:2;background:var(--s0);display:flex;justify-content:space-between;gap:8px;padding:12px 16px 6px;font-size:12px;font-weight:800;letter-spacing:.07em;color:var(--c)}
 .m-gh span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .m-gh small{font-size:11px;font-weight:600;letter-spacing:0;color:var(--tx2);text-transform:none}
 .m-gh em{font-style:normal;color:var(--tx2);font-weight:700;letter-spacing:0}
@@ -84,8 +90,44 @@ header{position:sticky;top:0;z-index:3;background:var(--s0);padding:12px 16px 0;
 .m-z span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .m-novo{flex:none;font-style:normal;background:var(--amb);color:#111;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:800}
 .m-vazio{padding:28px 16px;text-align:center;color:var(--tx2);font-size:14px}
-footer{display:flex;justify-content:space-between;padding:22px 16px 30px;font-size:13px}
-footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration:underline}
+/* resumo e ADM */
+.m-sec{padding:4px 16px 24px}
+.m-sec h2{font-size:12px;letter-spacing:.08em;color:var(--tx2);margin:18px 0 8px}
+.m-tot{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.m-tot div{background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 8px;text-align:center}
+.m-tot small{display:block;font-size:11px;color:var(--tx2)}.m-tot strong{font-size:24px}
+.m-estados div{display:flex;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--b1);font-weight:700}
+.m-estados div:last-child{border:0}.m-estados b{color:var(--c)}
+.m-causas{display:flex;flex-wrap:wrap;gap:8px}
+.m-causas span{background:var(--s2);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600}.m-causas b{margin-left:6px;color:var(--amb)}
+.m-card{background:var(--s1);border:1px solid var(--b1);border-radius:14px;overflow:hidden}
+.m-item{display:flex;width:100%;justify-content:space-between;align-items:center;gap:10px;min-height:56px;padding:12px 16px;border:0;border-bottom:1px solid var(--b1);background:none;text-align:left;font-weight:700;font-size:15px;text-decoration:none;color:var(--tx1)}
+.m-item:last-child{border-bottom:0}
+.m-item small{font-weight:500;color:var(--tx2);font-size:12px;text-align:right}
+.m-item.m-perigo{color:#ff8a83}
+.m-item:disabled{opacity:.45}
+#m-adm-msg{min-height:20px;margin-top:12px;font-size:13px;color:var(--tx2);text-align:center}
+#m-adm-msg.ok{color:var(--grn)}#m-adm-msg.ruim{color:var(--red)}
+.m-versao{color:var(--tx2);font-size:11px;text-align:center;margin-top:18px;opacity:.7}
+/* abas embaixo */
+#m-abas{flex:none;display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--b1);background:var(--s0);padding-bottom:env(safe-area-inset-bottom)}
+#m-abas button{position:relative;display:grid;justify-items:center;gap:2px;min-height:56px;padding:8px 0 6px;border:0;background:none;color:var(--tx2);font-size:11px;font-weight:700}
+#m-abas button span{font-size:21px;line-height:1}
+#m-abas button.on{color:var(--blu)}
+#m-abas sup{position:absolute;top:4px;left:56%;background:var(--red);color:#fff;border-radius:10px;padding:0 6px;font-size:10px;line-height:16px}
+/* confirmação por baixo (acima do teclado) */
+#m-folha{position:fixed;inset:0;z-index:20}
+#m-veu{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+#m-painel{position:absolute;left:0;right:0;bottom:0;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--b1);padding:10px 18px calc(18px + env(safe-area-inset-bottom))}
+.m-alca{width:40px;height:5px;border-radius:3px;background:var(--off);margin:0 auto 14px}
+#m-folha h3{color:var(--amb);font-size:17px;margin-bottom:8px}
+#m-folha p{font-size:14px;line-height:1.5}
+#m-folha label{display:block;margin-top:14px;font-size:13px;color:var(--tx2)}
+#m-palavra{width:100%;margin-top:6px;padding:12px;border-radius:10px;border:1.5px solid var(--red);background:var(--s0);color:var(--tx1);font:inherit;font-size:16px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;outline:none}
+.m-bts{display:grid;gap:10px;margin-top:14px}
+#m-folha-cancelar{min-height:48px;border:0;border-radius:12px;background:var(--blu);color:#fff;font-weight:800}
+#m-folha-ok{min-height:48px;border:1px solid var(--red);border-radius:12px;background:none;color:#ff8a83;font-weight:800}
+#m-folha-ok:disabled{opacity:.35}
 .m-homolog header{border-top:4px solid #b91c1c}
 .m-homolog .m-top b::after{content:' · HOMOLOG';color:#ff6b6b;font-size:12px}
 </style>
@@ -95,7 +137,7 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <h1>🚦 NIT · SEMÁFOROS</h1>
     <button id="m-btn-login" type="button">Entrar com Google</button>
     <p id="m-login-status"></p>
-    <small id="m-diag">movelhomolog7 (html)</small>
+    <small id="m-diag">movelhomolog8 (html)</small>
     <div id="m-ajuda" hidden>
         <p id="m-ajuda-ios">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br>Toque em <b>⬆︎</b> (compartilhar) → <b>Abrir no Safari</b> e entre por lá.</p>
         <p id="m-ajuda-android">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br><a id="m-abrir-chrome" class="m-btn2" href="#">Abrir no Chrome</a></p>
@@ -109,20 +151,61 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <header id="m-topo">
         <div class="m-top"><b>🚦 NIT · SEMÁFOROS</b><span id="m-relogio"></span></div>
         <div class="m-linha"><span id="m-estado" class="m-estado"></span><span id="m-resumo"></span></div>
-        <input id="m-busca" type="search" placeholder="🔍 Buscar código, cruzamento, equipe…" autocomplete="off" enterkeyhint="search">
-        <nav id="m-chips"></nav>
+        <div id="m-filtros">
+            <input id="m-busca" type="search" placeholder="🔍 Buscar código, cruzamento, equipe…" autocomplete="off" enterkeyhint="search">
+            <nav id="m-chips"></nav>
+        </div>
     </header>
-    <main id="m-lista"><p class="m-vazio">Carregando...</p></main>
-    <footer><a id="m-computador" href="index.html?versao=computador">Abrir versão computador</a><button id="m-sair" type="button">Sair</button></footer>
+    <main>
+        <div id="v-ocorr"><div id="m-paginas"></div></div>
+        <div id="v-resumo" class="m-vista" hidden>
+            <div class="m-sec">
+                <h2>HOJE</h2>
+                <div class="m-tot"><div><small>Ocorrências</small><strong id="r-total">0</strong></div><div><small>Pendentes</small><strong id="r-pend" style="color:var(--amb)">0</strong></div><div><small>Normalizados</small><strong id="r-norm" style="color:var(--grn)">0</strong></div></div>
+                <h2>POR SITUAÇÃO</h2>
+                <div id="r-estados" class="m-card m-estados"></div>
+                <h2>CAUSAS DO DIA</h2>
+                <div id="r-causas" class="m-causas"></div>
+            </div>
+        </div>
+        <div id="v-adm" class="m-vista" hidden>
+            <div class="m-sec">
+                <h2>PAINEL</h2>
+                <div class="m-card">
+                    <button id="a-limpar" class="m-item m-perigo" type="button">🧹 Limpar painel<small>›</small></button>
+                    <button id="a-restaurar" class="m-item" type="button" hidden>↩ Restaurar painel<small id="a-restaurar-info"></small></button>
+                </div>
+                <p id="m-adm-msg"></p>
+                <h2>CONTA</h2>
+                <div class="m-card">
+                    <a id="m-computador" class="m-item" href="index.html?versao=computador">🖥 Abrir versão computador<small>›</small></a>
+                    <button id="m-sair" class="m-item" type="button">Sair<small id="a-email"></small></button>
+                </div>
+                <p id="a-versao" class="m-versao"></p>
+            </div>
+        </div>
+    </main>
+    <nav id="m-abas">
+        <button type="button" data-aba="ocorr" class="on"><span>🚦</span>Ocorrências<sup id="m-abas-n" hidden></sup></button>
+        <button type="button" data-aba="resumo"><span>📊</span>Resumo</button>
+        <button type="button" data-aba="adm"><span>⚙︎</span>ADM</button>
+    </nav>
 </section>
-<script defer src="movel.js?v=movelhomolog7"></script>
-<script>
-    // cabeçalho do grupo gruda logo abaixo do topo (a altura do topo muda com a fonte do aparelho)
-    window.addEventListener('DOMContentLoaded', () => {
-        const topo = document.getElementById('m-topo');
-        const ajusta = () => document.documentElement.style.setProperty('--topo', `${topo.offsetHeight}px`);
-        if (window.ResizeObserver) new ResizeObserver(ajusta).observe(topo); else window.addEventListener('resize', ajusta);
-    });
-</script>
+
+<div id="m-folha" hidden>
+    <div id="m-veu"></div>
+    <div id="m-painel" role="dialog" aria-modal="true" aria-labelledby="m-folha-tit">
+        <div class="m-alca"></div>
+        <h3 id="m-folha-tit"></h3>
+        <p id="m-folha-txt"></p>
+        <label for="m-palavra">Para confirmar, digite <b id="m-folha-palavra"></b>:</label>
+        <input id="m-palavra" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+        <div class="m-bts">
+            <button id="m-folha-cancelar" type="button">Cancelar</button>
+            <button id="m-folha-ok" type="button" disabled></button>
+        </div>
+    </div>
+</div>
+<script defer src="movel.js?v=movelhomolog8"></script>
 </body>
 </html>

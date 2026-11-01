@@ -4,9 +4,31 @@
   F.ouvintes = F.ouvintes || [];
   const get = p => p.split('/').filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), F.estado);
   const snap = (key, v) => ({ key, val: () => (v === undefined ? null : v), exists: () => v != null });
-  function ref(path) {
+  // gravação com as regras que importam (como o real): apagar kanban inteiro e mexer na lixeira só ADM;
+  // gravação de vários caminhos é tudo ou nada (PERMISSION_DENIED recusa o lote inteiro)
+  const chaveEmail = e => String(e || '').toLowerCase().replace(/\./g, '|').replace(/@/g, '|');
+  const ehAdm = () => !!(F.usuario && (F.estado.nit_admins || {})[chaveEmail(F.usuario.email)] === true);
+  function gravar(caminho, v) {
+    const ps = caminho.split('/').filter(Boolean); let o = F.estado;
+    ps.slice(0, -1).forEach(k => { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; });
+    if (v === null) delete o[ps[ps.length - 1]]; else o[ps[ps.length - 1]] = JSON.parse(JSON.stringify(v));
+  }
+  let seq = 0;
+  function ref(path = '') {
+    path = String(path || '').split('/').filter(Boolean).join('/');
     const r = {
       path, _q: null,
+      push() { return { key: 'p' + String(++seq).padStart(5, '0') }; },
+      update(lote) {
+        F.escritas = (F.escritas || 0) + 1;
+        if (!F.usuario) return Promise.reject(Object.assign(new Error('PERMISSION_DENIED'), { code: 'PERMISSION_DENIED' }));
+        const cs = Object.keys(lote).map(k => (path ? path + '/' : '') + k);
+        if (F.gravacaoErro) return Promise.reject(Object.assign(new Error(F.gravacaoErro), { code: F.gravacaoErro }));
+        if (cs.some(c => c === 'kanban' || c.startsWith('lixeira')) && !ehAdm()) return Promise.reject(Object.assign(new Error('PERMISSION_DENIED'), { code: 'PERMISSION_DENIED' }));
+        Object.entries(lote).forEach(([k, v]) => gravar((path ? path + '/' : '') + k, v));
+        setTimeout(() => window.__FBemitir(), 10);
+        return Promise.resolve();
+      },
       get: () => Promise.resolve(snap(path, get(path))),
       orderByChild(c) { const q = { ...r, _c: c }; q.equalTo = v => ({ ...r, _q: { c, v } }); return q; },
       on(ev, cb) { const o = { path, cb, q: this._q }; F.ouvintes.push(o); setTimeout(() => emitir(o), 30); return cb; },

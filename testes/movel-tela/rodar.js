@@ -51,9 +51,9 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
   // E1 ADM: lista do dia
   { const { p, ctx, erros } = await abrir(b, { ...base, usuario: U });
     const chips = await p.$$eval('.m-chip', xs => xs.map(x => x.textContent));
-    const linhas = await p.$$eval('.m-r', xs => xs.length);
-    const primeiro = await p.$eval('.m-r time', x => x.textContent);
-    const tempos = await p.$$eval('.m-r', xs => xs.map(x => x.querySelector('time').textContent));
+    const linhas = await p.$$eval('.m-pag.on .m-r', xs => xs.length);
+    const primeiro = await p.$eval('.m-pag.on .m-r time', x => x.textContent);
+    const tempos = await p.$$eval('.m-pag.on .m-r', xs => xs.map(x => x.querySelector('time').textContent));
     await p.screenshot({ path: path.join(__dirname, 'movel-aguardando.png') });
     reg('E1', 'ADM abre: Aguardando, 18 linhas, mais antiga primeiro, totais batem', [
       ck(chips.join('|') === 'Aguardando18|Via Livre6|AMC5|Sem nec.4|Normalizados9|Todos42', chips.join(' | ')),
@@ -64,13 +64,14 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
       ck(!(await p.evaluate(() => window.__FB.cfg.databaseURL)).includes('homologacao'), 'endereço de produção usa o banco de produção'),
     ]);
     await p.click('.m-chip >> text=Via Livre'); await p.waitForTimeout(100);
-    const sub = await p.$eval('.m-r .m-z span', x => x.textContent);
+    const sub = await p.$eval('.m-pag.on .m-r .m-z span', x => x.textContent);
     await p.screenshot({ path: path.join(__dirname, 'movel-vialivre.png') });
     await p.click('.m-chip >> text=Todos'); await p.fill('#m-busca', 'aguanambi'); await p.waitForTimeout(100);
-    const achou = await p.$$eval('.m-r', xs => xs.length);
-    await p.fill('#m-busca', ''); await p.waitForTimeout(100); await p.mouse.wheel(0, 1600); await p.waitForTimeout(200);
+    const achou = await p.$$eval('.m-pag.on .m-r', xs => xs.length);
+    await p.fill('#m-busca', ''); await p.waitForTimeout(400);
+    await p.evaluate(() => { document.querySelector('.m-pag.on').scrollTop = 1600; }); await p.waitForTimeout(200);
     await p.screenshot({ path: path.join(__dirname, 'movel-todos-rolado.png') });
-    const gh = await p.evaluate(() => { const t = document.getElementById('m-topo').getBoundingClientRect().bottom; const g = [...document.querySelectorAll('.m-gh')].find(x => Math.abs(x.getBoundingClientRect().top - t) < 2); return g ? g.textContent : null; });
+    const gh = await p.evaluate(() => { const pg = document.querySelector('.m-pag.on'), t = pg.getBoundingClientRect().top; const g = [...pg.querySelectorAll('.m-gh')].find(x => Math.abs(x.getBoundingClientRect().top - t) < 2); return g ? g.textContent : null; });
     reg('E2', 'Filtro Via Livre, busca e cabeçalho do grupo preso no topo', [
       ck(/ · VT 0\d$/.test(sub), `Via Livre mostra equipe: ${sub}`), ck(achou === 6, `busca "aguanambi" em Todos: ${achou} (6 esperadas: 42/8 ruas)`),
       ck(gh, `cabeçalho preso ao rolar: ${gh}`),
@@ -79,7 +80,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     await p.click('.m-chip >> text=Aguardando');
     await p.evaluate(([dia, inicio]) => { window.__FB.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-espera', dataReferencia: dia, inicio, endereco: 'AV. NOVA', problema: 'APAGADO', tipo: 'ENEL' }; window.__FBemitir(); }, [DIA, ini(2)]);
     await p.waitForTimeout(150);
-    const ult = await p.$$eval('.m-r', xs => xs.map(x => x.querySelector('.m-av').textContent + (x.querySelector('.m-novo') ? '*' : '')));
+    const ult = await p.$$eval('.m-pag.on .m-r', xs => xs.map(x => x.querySelector('.m-av').textContent + (x.querySelector('.m-novo') ? '*' : '')));
     reg('E3', '1ª visita no aparelho: card que chega ao vivo aparece, sem "novo"', [ck(ult.length === 19 && ult.includes('777'), `${ult.length} linhas; 777 = ${ult.find(x => x.startsWith('777'))}`)]);
     // sai do app (guarda vistos), volta depois com 2 mudanças
     await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
@@ -88,7 +89,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     const F2 = JSON.parse(JSON.stringify({ ...base, usuario: U })); F2.estado.kanban = crise(); F2.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-vl', dataReferencia: DIA, inicio: ini(2), endereco: 'AV. NOVA', equipe: 'SILVA', viatura: '09' };
     F2.estado.kanban['888_n'] = { codigo: '888', coluna: 'coluna-espera', dataReferencia: DIA, inicio: ini(1), endereco: 'AV. OUTRA', problema: 'PISCANTE', tipo: 'FURTO' };
     const s2 = await abrir(b, F2, undefined, vistos);
-    const novos = await s2.p.$$eval('.m-r', xs => xs.filter(x => x.querySelector('.m-novo')).map(x => x.querySelector('.m-av').textContent));
+    const novos = await s2.p.$$eval('.m-pag.on .m-r', xs => xs.filter(x => x.querySelector('.m-novo')).map(x => x.querySelector('.m-av').textContent));
     const pontos = await s2.p.$$eval('.m-chip', xs => xs.filter(x => x.querySelector('.m-chip-novo')).map(x => x.firstChild.textContent));
     await s2.p.screenshot({ path: path.join(__dirname, 'movel-novo.png') });
     reg('E4', 'Volta depois: "novo" no que entrou ou mudou de coluna; ponto no filtro', [
@@ -106,7 +107,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     const antes = await p.$eval('#m-login', x => !x.hidden);
     await p.screenshot({ path: path.join(__dirname, 'movel-login.png') });
     await p.click('#m-btn-login'); await p.waitForTimeout(400);
-    reg('E7', 'Sem sessão: tela de login; após entrar, abre a lista', [ck(antes, 'login visível'), ck(await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta')]); await ctx.close(); }
+    reg('E7', 'Sem sessão: tela de login; após entrar, abre a lista', [ck(antes, 'login visível'), ck(await p.$$eval('.m-pag.on .m-r', xs => xs.length) === 18, 'lista aberta')]); await ctx.close(); }
   // E8 sem internet
   { const { p, ctx } = await abrir(b, { ...base, usuario: U });
     await p.evaluate(() => { window.__FB.online = false; window.__FBemitir(); }); await p.waitForTimeout(1000);
@@ -154,7 +155,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     await p.click('#m-btn-login'); await p.waitForTimeout(300);
     await p.evaluate(() => { window.__FB.popup = null; }); await p.click('#m-btn-login'); await p.waitForTimeout(400);
     reg('E14', 'Tentou de novo e deu certo: a instrução some e a lista abre', [
-      ck(!(await vis(p, 'm-ajuda')) && await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta, ajuda escondida'),
+      ck(!(await vis(p, 'm-ajuda')) && await p.$$eval('.m-pag.on .m-r', xs => xs.length) === 18, 'lista aberta, ajuda escondida'),
     ]); await ctx.close(); }
   { const g = { email: 'teste.adm@gmail.com', pedidos: [] };
     const ctx = await b.newContext({ isMobile: true, userAgent: IOS });
@@ -185,7 +186,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     const ped = g.pedidos[0] || {};
     reg('E15', 'iPhone, ir e voltar: Google devolve ao movel.html, sessão abre, lista aparece', [
       ck(ped.response_type === 'id_token' && ped.redirect_uri === 'http://nit.teste/nit-homologacao/movel.html' && ped.client_id === 'teste.apps.googleusercontent.com', `pedido: ${JSON.stringify(ped).slice(0, 160)}`),
-      ck(await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta (ADM)'),
+      ck(await p.$$eval('.m-pag.on .m-r', xs => xs.length) === 18, 'lista aberta (ADM)'),
       ck(!p.url().includes('#') && !p.url().includes('id_token'), `comprovante tirado do endereço: ${p.url()}`),
       ck(!(await p.evaluate(() => window.__FB.janelas)), 'sem janela (pop-up)'),
       ck(/sessão aberta/.test(await p.evaluate(() => localStorage.getItem('nit-movel-login-passo'))), `rastro: ${await p.evaluate(() => localStorage.getItem('nit-movel-login-passo'))}`),
@@ -216,6 +217,70 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(600);
     reg('E19', 'Firebase recusa o comprovante: motivo com código na tela', [
       ck(/auth\/invalid-credential/.test(await p.$eval('#m-login-status', x => x.textContent)), await p.$eval('#m-login-status', x => x.textContent)),
+    ]); await ctx.close(); }
+  // ── Arrastar para o lado troca a lista (01/11) + abas + ADM
+  { const { p, ctx, erros } = await abrir(b, JSON.parse(JSON.stringify({ ...base, usuario: U })));
+    const w = await p.$eval('#m-paginas', x => x.clientWidth);
+    await p.evaluate(wd => { document.getElementById('m-paginas').scrollTo({ left: wd }); }, w); await p.waitForTimeout(300);
+    const st1 = { chip: await p.$eval('.m-chip.on', x => x.dataset.id), pag: await p.$eval('.m-pag.on', x => x.dataset.pag), sub: await p.$eval('.m-pag.on .m-r .m-z span', x => x.textContent) };
+    await p.evaluate(wd => { document.getElementById('m-paginas').scrollTo({ left: wd * 4 }); }, w); await p.waitForTimeout(300);
+    const st2 = await p.$eval('.m-chip.on', x => x.dataset.id);
+    await p.click('.m-chip >> text=AMC'); await p.waitForTimeout(800);
+    const st3 = { left: await p.$eval('#m-paginas', x => x.scrollLeft), pag: await p.$eval('.m-pag.on', x => x.dataset.pag) };
+    await p.screenshot({ path: path.join(__dirname, 'movel-arrastar.png') });
+    reg('E22', 'Arrastar para o lado troca a lista e o filtro acompanha; tocar no filtro leva à lista', [
+      ck(st1.chip === 'vl' && st1.pag === 'vl' && / · VT \d+$/.test(st1.sub), `1 tela para o lado: ${JSON.stringify(st1)}`),
+      ck(st2 === 'norm', `4 telas: ${st2}`),
+      ck(st3.pag === 'amc' && Math.abs(st3.left - 2 * w) < 2, `toque em AMC: ${JSON.stringify(st3)}`),
+      ck(await p.evaluate(() => localStorage.getItem('nit-movel-filtro')) === 'amc', 'lembra a lista escolhida'),
+    ]);
+    await p.click('#m-abas button[data-aba="resumo"]'); await p.waitForTimeout(150);
+    const res = { vis: await p.$eval('#v-resumo', x => !x.hidden), filtros: await p.$eval('#m-filtros', x => x.hidden), total: await p.$eval('#r-total', x => x.textContent), causas: await p.$$eval('#r-causas span', xs => xs.length) };
+    await p.screenshot({ path: path.join(__dirname, 'movel-resumo.png') });
+    await p.click('#m-abas button[data-aba="adm"]'); await p.waitForTimeout(150);
+    await p.screenshot({ path: path.join(__dirname, 'movel-adm.png') });
+    reg('E23', 'Abas embaixo: Resumo (totais, situação, causas) e ADM; busca e filtros só em Ocorrências', [
+      ck(res.vis && res.filtros && res.total === '42' && res.causas === 5, JSON.stringify(res)),
+      ck(await p.$eval('#v-adm', x => !x.hidden) && await p.$eval('#a-restaurar', x => x.hidden) && /teste\.adm/i.test(await p.$eval('#a-email', x => x.textContent)), 'ADM: limpar, conta; restaurar escondido (sem cópia)'),
+      ck(await p.$eval('#m-abas-n', x => x.textContent) === '18', 'aba Ocorrências mostra 18 aguardando'),
+    ]);
+    // limpar: travado sem a palavra
+    await p.click('#a-limpar'); await p.waitForTimeout(250);
+    const f0 = { aberta: await p.$eval('#m-folha', x => !x.hidden), travado: await p.$eval('#m-folha-ok', x => x.disabled), txt: await p.$eval('#m-folha-txt', x => x.textContent) };
+    await p.screenshot({ path: path.join(__dirname, 'movel-limpar.png') });
+    await p.press('#m-palavra', 'Enter'); await p.fill('#m-palavra', 'LIMPA'); await p.press('#m-palavra', 'Enter'); await p.waitForTimeout(150);
+    const nada = { escritas: await p.evaluate(() => window.__FB.escritas || 0), aberta: await p.$eval('#m-folha', x => !x.hidden) };
+    await p.click('#m-folha-cancelar'); await p.waitForTimeout(100);
+    const cancel = { aberta: await p.$eval('#m-folha', x => !x.hidden), escritas: await p.evaluate(() => window.__FB.escritas || 0) };
+    reg('E24', 'Limpar pelo celular: pergunta por baixo, travada até digitar LIMPAR; Enter e Cancelar não apagam', [
+      ck(f0.aberta && f0.travado && /Apaga os 43 cards/.test(f0.txt), JSON.stringify(f0)),
+      ck(nada.escritas === 0 && nada.aberta, `sem a palavra: ${JSON.stringify(nada)}`),
+      ck(!cancel.aberta && cancel.escritas === 0, `cancelar: ${JSON.stringify(cancel)}`),
+    ]);
+    await p.click('#a-limpar'); await p.waitForTimeout(250); await p.fill('#m-palavra', 'limpar'); await p.click('#m-folha-ok'); await p.waitForTimeout(500);
+    const dep = await p.evaluate(() => { const e = window.__FB.estado; return { kanban: Object.keys(e.kanban || {}).length, lix: Object.values(e.lixeira || {}).map(c => c.cards), aud: Object.values(Object.values(e.auditoria || {})[0] || {}).map(x => x.linhas[0]), dec: !!(e.meta || {}).decisoes_ativas }; });
+    const msg = await p.$eval('#m-adm-msg', x => x.textContent), rest = await p.$eval('#a-restaurar', x => !x.hidden);
+    await p.click('#m-abas button[data-aba="ocorr"]'); await p.waitForTimeout(200);
+    const vazio = await p.$$eval('.m-pag.on .m-r', xs => xs.length);
+    reg('E25', '"limpar" + Limpar painel: apaga para todos, guarda a cópia, registra na LINHA DO TEMPO; Restaurar aparece', [
+      ck(dep.kanban === 0 && JSON.stringify(dep.lix) === '[43]' && dep.aud[0] === '🧹 Painel limpo (43 cards). Cópia guardada.', JSON.stringify(dep)),
+      ck(/Painel limpo\. 43 cards/.test(msg) && rest, `${msg} · restaurar visível: ${rest}`),
+      ck(vazio === 0, `lista vazia: ${vazio}`),
+    ]);
+    await p.click('#m-abas button[data-aba="adm"]'); await p.click('#a-restaurar'); await p.waitForTimeout(200);
+    await p.fill('#m-palavra', 'LIMPAR'); const outra = await p.$eval('#m-folha-ok', x => x.disabled);
+    await p.fill('#m-palavra', 'restaurar'); await p.press('#m-palavra', 'Enter'); await p.waitForTimeout(500);
+    const vol = await p.evaluate(() => Object.keys(window.__FB.estado.kanban || {}).length);
+    reg('E26', 'Restaurar pelo celular: só com RESTAURAR; devolve os cards; some depois', [
+      ck(outra, '"LIMPAR" não serve'), ck(vol === 43, `cards de volta: ${vol}`),
+      ck(await p.$eval('#a-restaurar', x => x.hidden) && /restaurado: 43/.test(await p.$eval('#m-adm-msg', x => x.textContent)), await p.$eval('#m-adm-msg', x => x.textContent)),
+      ck(!erros.length, `erros: ${erros.join('; ') || 'nenhum'}`),
+    ]); await ctx.close(); }
+  { const { p, ctx } = await abrir(b, JSON.parse(JSON.stringify({ ...base, usuario: U, gravacaoErro: 'PERMISSION_DENIED' })));
+    await p.click('#m-abas button[data-aba="adm"]'); await p.click('#a-limpar'); await p.waitForTimeout(200);
+    await p.fill('#m-palavra', 'limpar'); await p.click('#m-folha-ok'); await p.waitForTimeout(400);
+    reg('E27', 'Banco recusa (sem permissão): diz que nada foi apagado, com o código', [
+      ck(/Nada foi apagado\. \(PERMISSION_DENIED\)/.test(await p.$eval('#m-adm-msg', x => x.textContent)) && await p.evaluate(() => Object.keys(window.__FB.estado.kanban).length) === 43, await p.$eval('#m-adm-msg', x => x.textContent)),
     ]); await ctx.close(); }
   await b.close();
   const f = R.filter(x => x !== 'PASSOU').length; console.log('RESUMO movel-tela', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });

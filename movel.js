@@ -147,7 +147,47 @@
         return { ok: true, email: p.email || '' };
     }
 
-    const Puro = { urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
+    // ── ADM: limpar e restaurar o painel (01/11). MESMO efeito do NitAdmin do computador (BR-ADM-001);
+    // diferença: a LINHA DO TEMPO entra na MESMA gravação (tudo ou nada). Paridade testada em bateria-movel-paridade.js.
+    const MAX_COPIAS = 5;
+    function ultimaCopia(lix) {
+        const es = Object.entries(lix || {}).map(([id, v]) => ({ id, ...v })).filter(v => v && v.ts).sort((a, b) => b.ts - a.ts);
+        return es[0] || null;
+    }
+    function linhaDoTempo(texto, ts, por) { return { ts, por, tipo: 'acao', linhas: [texto] }; }
+    // kanban/decisoes/lixeira: lidos do banco na hora; chaveAud: push().key de auditoria/{dia}
+    function montarLimpeza({ kanban, decisoes, lixeira, ts, por, email, turno, dia, chaveAud }) {
+        const cards = Object.keys(kanban || {}).length;
+        const lote = {
+            kanban: null, 'meta/decisoes_ativas': null, 'meta/dataReferencia': null,
+            'meta/ultimoReset': { ts, operador: por, turno: turno || '' },
+            [`lixeira/c${ts}`]: { ts, por, email: email || '', cards, kanban: kanban || null, decisoes_ativas: decisoes || null },
+            [`auditoria/${dia}/${chaveAud}`]: linhaDoTempo(`🧹 Painel limpo (${cards} cards). Cópia guardada.`, ts, por),
+        };
+        Object.entries(lixeira || {}).sort((a, b) => ((b[1] && b[1].ts) || 0) - ((a[1] && a[1].ts) || 0)).slice(MAX_COPIAS - 1)
+            .forEach(([id]) => { lote[`lixeira/${id}`] = null; });   // guarda só as últimas (plano gratuito)
+        return { lote, cards };
+    }
+    function montarRestauro({ lixeira, kanban, decisoes, ts, por, dia, chaveAud }) {
+        const u = ultimaCopia(lixeira);
+        if (!u || u.restauradoTs) return null;
+        const agora = kanban || {}, lote = {}; let n = 0;
+        for (const [id, card] of Object.entries(u.kanban || {})) if (!agora[id]) { lote[`kanban/${id}`] = card; n++; }   // quem entrou depois fica
+        if (!decisoes && u.decisoes_ativas) lote['meta/decisoes_ativas'] = u.decisoes_ativas;
+        lote[`lixeira/${u.id}/restauradoTs`] = ts;
+        lote[`lixeira/${u.id}/restauradoPor`] = por;
+        lote[`auditoria/${dia}/${chaveAud}`] = linhaDoTempo(`↩ Painel restaurado (${n} cards).`, ts, por);
+        return { lote, n, copia: u.id };
+    }
+    // CAUSAS DO DIA: mesmo critério da barra lateral do computador (todas as colunas do dia; sem causa = SEM CAUSA)
+    function causas(por) {
+        const cont = {};
+        GRUPOS.forEach(g => por[g.id].forEach(c => { const k = sv(c.tipo).toUpperCase() || 'SEM CAUSA'; cont[k] = (cont[k] || 0) + 1; }));
+        return Object.entries(cont).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    }
+    const confere = (digitado, palavra) => sv(digitado).toUpperCase() === palavra;
+
+    const Puro = { ultimaCopia, montarLimpeza, montarRestauro, causas, confere, MAX_COPIAS, urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
     if (typeof module !== 'undefined' && module.exports) { module.exports = Puro; return; }
 
     // ── Página ──────────────────────────────────────────────────────────
@@ -257,6 +297,8 @@
             let adm = false;
             try { adm = (await S.db.ref(`nit_admins/${k}`).get()).val() === true; } catch (e) { adm = false; }
             if (!adm) { location.replace('index.html?versao=computador'); return; }   // fase 1: celular só para ADM
+            const d = aut.val() || {};
+            S.operador = d.nome || user.displayName || user.email; S.turno = d.turno || ''; S.email = user.email; S.adm = true;
             iniciar();
         } catch (e) {
             console.error('[NitMovel] verificar:', e);
@@ -274,7 +316,10 @@
 
     function iniciar() {
         tela('m-app');
+        montarPaginas(); montarAbas();
+        $('a-email').textContent = S.email || ''; $('a-versao').textContent = window.NIT_MOVEL_VERSAO || '';
         assinarDia();
+        S.db.ref('lixeira').on('value', snap => { S.lixeira = snap.val(); renderAdm(); }, () => { S.lixeira = null; renderAdm(); });
         S.db.ref('meta/ultimo_processamento').on('value', s => { S.ultimo = s.val(); renderEstado(); });
         let t = null;
         S.db.ref('.info/connected').on('value', s => {
@@ -302,51 +347,180 @@
         el.textContent = u && u.ts ? `✓ ATUALIZADO ${hhmm(u.ts)} · ${u.planilha ? 'PLANILHA' : (u.auto ? 'AUTOMÁTICO' : sv(u.por).toUpperCase() || 'NIT')}` : '✓ AO VIVO';
     }
 
+    // ── Ocorrências: uma página por lista, lado a lado. Arrastar para o lado troca a lista; o filtro acompanha.
+    const PAGINAS = [...GRUPOS.map(g => g.id), 'todos'];
+    function montarPaginas() {
+        const box = $('m-paginas'); if (box.childElementCount) return;
+        PAGINAS.forEach(id => { const pg = document.createElement('section'); pg.className = 'm-pag'; pg.dataset.pag = id; box.append(pg); });
+        let raf = 0;
+        box.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+            const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth)), id = PAGINAS[i];
+            if (S._indo) { if (id === S._indo) S._indo = null; return; }   // indo por toque no filtro: não trocar no meio do caminho
+            if (id && id !== S.filtro) { S.filtro = id; ls.set(CH_FILTRO, id); marcarFiltro(true); }
+        }); }, { passive: true });
+        window.addEventListener('resize', () => irPara(S.filtro, false));
+    }
+    function irPara(id, suave) {
+        const box = $('m-paginas'), i = Math.max(0, PAGINAS.indexOf(id)), alvo = i * box.clientWidth;
+        if (Math.abs(box.scrollLeft - alvo) < 2) { S._indo = null; return; }
+        S._indo = id; clearTimeout(S._indoT); S._indoT = setTimeout(() => { S._indo = null; }, 1200);   // trava de segurança
+        box.scrollTo({ left: alvo, behavior: suave ? 'smooth' : 'auto' });
+    }
+    function marcarFiltro(centralizar) {
+        document.querySelectorAll('.m-chip').forEach(b => b.classList.toggle('on', b.dataset.id === S.filtro));
+        document.querySelectorAll('.m-pag').forEach(pg => pg.classList.toggle('on', pg.dataset.pag === S.filtro));
+        const on = document.querySelector('.m-chip.on');
+        if (centralizar && on && on.scrollIntoView) on.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    }
+
+    function linhaEl(c, g, agora, primeira) {
+        const L = linha(c, g.id, agora), novo = !primeira && !S.vistos.has(marcaVista(c, g.id));
+        const r = document.createElement('div'); r.className = 'm-r' + (L.alerta ? ' m-alerta' : ''); r.style.setProperty('--c', `var(--${g.cor})`);
+        r.innerHTML = '<div class="m-av"></div><div class="m-m"><div class="m-a"><b></b><time></time></div><div class="m-z"><span></span></div></div>';
+        r.querySelector('.m-av').textContent = c.codigo;
+        r.querySelector('b').textContent = L.titulo;
+        r.querySelector('time').textContent = L.tempo;
+        r.querySelector('.m-z span').textContent = L.sub;
+        if (novo) { const n = document.createElement('i'); n.className = 'm-novo'; n.textContent = 'novo'; r.querySelector('.m-z').append(n); }
+        return r;
+    }
+    function cabecalho(g, n) {
+        const h = document.createElement('div'); h.className = 'm-gh'; h.style.setProperty('--c', `var(--${g.cor})`);
+        h.innerHTML = `<span></span><em>${n}</em>`; h.firstChild.textContent = g.tit;
+        if (g.ordem) { const o = document.createElement('small'); o.textContent = ` · ${g.ordem}`; h.firstChild.append(o); }
+        return h;
+    }
+    const vazio = txt => { const p = document.createElement('p'); p.className = 'm-vazio'; p.textContent = txt; return p; };
+
     function render() {
         renderEstado();
+        if (!$('m-paginas').childElementCount) return;
         const agora = Date.now(), por = montar(S.kanban, S.dia), t = totais(por);
+        S.por = por;
         $('m-resumo').textContent = `${t.pend} pend. · ${t.norm} norm.`;
         S.atuais = new Set(GRUPOS.flatMap(g => por[g.id].map(c => marcaVista(c, g.id))));
         const primeira = S.vistos.size === 0;   // 1ª visita no aparelho: nada é "novo"
+        const nEsp = por.espera.length, sup = $('m-abas-n'); sup.hidden = !nEsp; sup.textContent = nEsp;
 
-        // filtros com contagem (o "novo" de cada grupo vira ponto no filtro)
+        // filtros com contagem (o "novo" de cada lista vira ponto no filtro)
         const chips = [...GRUPOS.map(g => ({ id: g.id, rot: g.rot, n: por[g.id].length, cor: g.cor,
             novos: primeira ? 0 : por[g.id].filter(c => !S.vistos.has(marcaVista(c, g.id))).length })),
             { id: 'todos', rot: 'Todos', n: t.total, cor: 'tx2', novos: 0 }];
         $('m-chips').replaceChildren(...chips.map(ch => {
-            const b = document.createElement('button'); b.type = 'button';
-            b.className = 'm-chip' + (S.filtro === ch.id ? ' on' : ''); b.style.setProperty('--c', `var(--${ch.cor})`);
+            const b = document.createElement('button'); b.type = 'button'; b.dataset.id = ch.id;
+            b.className = 'm-chip'; b.style.setProperty('--c', `var(--${ch.cor})`);
             b.innerHTML = `${ch.rot}<b>${ch.n}</b>${ch.novos ? '<i class="m-chip-novo"></i>' : ''}`;
-            b.addEventListener('click', () => { S.filtro = ch.id; ls.set(CH_FILTRO, ch.id); render(); window.scrollTo(0, 0); });
+            b.addEventListener('click', () => { S.filtro = ch.id; ls.set(CH_FILTRO, ch.id); marcarFiltro(true); irPara(ch.id, true); });
             return b;
         }));
 
-        const lista = $('m-lista'); const frag = document.createDocumentFragment();
-        const grupos = S.filtro === 'todos' ? GRUPOS : GRUPOS.filter(g => g.id === S.filtro);
-        let mostrou = 0;
-        grupos.forEach(g => {
-            const itens = por[g.id].filter(c => busca(c, S.q));
-            if (!itens.length && S.filtro === 'todos') return;
-            const h = document.createElement('div'); h.className = 'm-gh'; h.style.setProperty('--c', `var(--${g.cor})`);
-            h.innerHTML = `<span></span><em>${itens.length}</em>`; h.firstChild.textContent = g.tit;
-            if (g.ordem) { const o = document.createElement('small'); o.textContent = ` · ${g.ordem}`; h.firstChild.append(o); }
-            frag.append(h);
-            if (!itens.length) { const p = document.createElement('p'); p.className = 'm-vazio'; p.textContent = S.q ? 'Nada encontrado.' : 'Nenhuma ocorrência aqui.'; frag.append(p); }
-            itens.forEach(c => {
-                const L = linha(c, g.id, agora), novo = !primeira && !S.vistos.has(marcaVista(c, g.id));
-                const r = document.createElement('div'); r.className = 'm-r' + (L.alerta ? ' m-alerta' : ''); r.style.setProperty('--c', `var(--${g.cor})`);
-                r.innerHTML = '<div class="m-av"></div><div class="m-m"><div class="m-a"><b></b><time></time></div><div class="m-z"><span></span></div></div>';
-                r.querySelector('.m-av').textContent = c.codigo;
-                r.querySelector('b').textContent = L.titulo;
-                r.querySelector('time').textContent = L.tempo;
-                r.querySelector('.m-z span').textContent = L.sub;
-                if (novo) { const n = document.createElement('i'); n.className = 'm-novo'; n.textContent = 'novo'; r.querySelector('.m-z').append(n); }
-                frag.append(r); mostrou++;
+        // cada página: a lista dela (Todos = todas, com cabeçalho por lista)
+        PAGINAS.forEach(id => {
+            const pg = document.querySelector(`.m-pag[data-pag="${id}"]`), frag = document.createDocumentFragment();
+            if (!S.carregado) { pg.replaceChildren(vazio('Carregando...')); return; }
+            const gs = id === 'todos' ? GRUPOS : GRUPOS.filter(g => g.id === id);
+            let mostrou = 0;
+            gs.forEach(g => {
+                const itens = por[g.id].filter(c => busca(c, S.q));
+                if (!itens.length && id === 'todos') return;
+                frag.append(cabecalho(g, itens.length));
+                if (!itens.length) frag.append(vazio(S.q ? 'Nada encontrado.' : 'Nenhuma ocorrência aqui.'));
+                itens.forEach(c => { frag.append(linhaEl(c, g, agora, primeira)); mostrou++; });
             });
+            if (!mostrou && id === 'todos') frag.append(vazio(S.q ? 'Nada encontrado.' : 'Nenhuma ocorrência hoje.'));
+            pg.replaceChildren(frag);
         });
-        if (!S.carregado) { lista.innerHTML = '<p class="m-vazio">Carregando...</p>'; return; }
-        if (!mostrou && S.filtro === 'todos') { lista.innerHTML = `<p class="m-vazio">${S.q ? 'Nada encontrado.' : 'Nenhuma ocorrência hoje.'}</p>`; return; }
-        lista.replaceChildren(frag);
+        marcarFiltro(false);
+        if (!S._posicionado) { S._posicionado = true; requestAnimationFrame(() => irPara(S.filtro, false)); }
+        renderResumo(por, t);
+        renderAdm();
+    }
+
+    // ── Resumo
+    function renderResumo(por, t) {
+        $('r-total').textContent = t.total; $('r-pend').textContent = t.pend; $('r-norm').textContent = t.norm;
+        $('r-estados').replaceChildren(...GRUPOS.map(g => { const d = document.createElement('div'); d.style.setProperty('--c', `var(--${g.cor})`);
+            d.innerHTML = '<span></span><b></b>'; d.firstChild.textContent = g.tit; d.lastChild.textContent = por[g.id].length; return d; }));
+        const cs = causas(por);
+        $('r-causas').replaceChildren(...(cs.length ? cs.map(([k, n]) => { const e = document.createElement('span'); e.textContent = k;
+            const b = document.createElement('b'); b.textContent = n; e.append(b); return e; }) : [vazio('Nenhuma ocorrência hoje.')]));
+    }
+
+    // ── Abas
+    function montarAbas() {
+        document.querySelectorAll('#m-abas button').forEach(b => b.addEventListener('click', () => abrirAba(b.dataset.aba)));
+    }
+    function abrirAba(aba) {
+        S.aba = aba;
+        document.querySelectorAll('#m-abas button').forEach(b => b.classList.toggle('on', b.dataset.aba === aba));
+        $('v-ocorr').hidden = aba !== 'ocorr'; $('v-resumo').hidden = aba !== 'resumo'; $('v-adm').hidden = aba !== 'adm';
+        $('m-filtros').hidden = aba !== 'ocorr';
+        if (aba === 'ocorr') requestAnimationFrame(() => irPara(S.filtro, false));
+    }
+
+    // ── ADM: limpar / restaurar (mesmo efeito do computador; confirmação digitando a palavra)
+    function renderAdm() {
+        const u = ultimaCopia(S.lixeira), b = $('a-restaurar'); if (!b) return;
+        b.hidden = !(u && !u.restauradoTs);
+        if (u) $('a-restaurar-info').textContent = `limpo às ${hhmm(u.ts)} · ${u.cards || 0} cards`;
+    }
+    function admMsg(txt, tipo) { const el = $('m-adm-msg'); el.textContent = txt; el.className = tipo || ''; }
+
+    let _folha = null;
+    function confirmar({ titulo, texto, palavra, rotulo, acao }) {
+        _folha = { palavra, acao };
+        $('m-folha-tit').textContent = titulo; $('m-folha-txt').textContent = texto;
+        $('m-folha-palavra').textContent = palavra; $('m-folha-ok').textContent = rotulo;
+        $('m-palavra').value = ''; $('m-folha-ok').disabled = true; $('m-folha').hidden = false;
+        setTimeout(() => { try { $('m-palavra').focus(); } catch (e) { /* sem foco: segue */ } }, 60);
+    }
+    function fecharFolha() { $('m-folha').hidden = true; _folha = null; try { $('m-palavra').blur(); } catch (e) { /* segue */ } }
+    async function okFolha() {
+        if (!_folha || !confere($('m-palavra').value, _folha.palavra)) return;   // sem a palavra, nada acontece
+        const f = _folha; fecharFolha(); await f.acao();
+    }
+    function montarFolha() {
+        $('m-palavra').addEventListener('input', () => { $('m-folha-ok').disabled = !(_folha && confere($('m-palavra').value, _folha.palavra)); });
+        $('m-palavra').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); okFolha(); } });
+        $('m-folha-ok').addEventListener('click', okFolha);
+        $('m-folha-cancelar').addEventListener('click', fecharFolha);
+        $('m-veu').addEventListener('click', fecharFolha);
+        $('a-limpar').addEventListener('click', async () => {
+            let n = '?'; try { n = Object.keys((await S.db.ref('kanban').get()).val() || {}).length; } catch (e) { /* mostra "?" */ }
+            confirmar({ titulo: '🧹 Limpar o painel?', palavra: 'LIMPAR', rotulo: 'Limpar painel', acao: limpar,
+                texto: `Apaga os ${n} cards e os avisos para todos os operadores. Fica uma cópia: dá para restaurar depois.` });
+        });
+        $('a-restaurar').addEventListener('click', () => confirmar({ titulo: '↩ Restaurar o painel?', palavra: 'RESTAURAR', rotulo: 'Restaurar painel', acao: restaurar,
+            texto: 'Devolve os cards e os avisos do último painel limpo. Cards que entraram depois continuam.' }));
+    }
+    const diaChave = () => S.dia.replace(/\D/g, '');
+    async function limpar() {
+        admMsg('Limpando...');
+        try {
+            const ler = async p => (await S.db.ref(p).get()).val();
+            const [kanban, decisoes, lixeira] = await Promise.all([ler('kanban'), ler('meta/decisoes_ativas'), ler('lixeira')]);
+            const { lote, cards } = montarLimpeza({ kanban, decisoes, lixeira, ts: Date.now(), por: S.operador, email: S.email, turno: S.turno,
+                dia: diaChave(), chaveAud: S.db.ref(`auditoria/${diaChave()}`).push().key });
+            await S.db.ref().update(lote);
+            admMsg(`Painel limpo. ${cards} cards guardados na cópia.`, 'ok'); passo(`limpou o painel (${cards})`);
+        } catch (e) {
+            console.error('[NitMovel] limpar', e);
+            admMsg(`❌ Não deu para limpar. Nada foi apagado. (${(e && (e.code || e.message)) || e})`, 'ruim');
+        }
+    }
+    async function restaurar() {
+        admMsg('Restaurando...');
+        try {
+            const ler = async p => (await S.db.ref(p).get()).val();
+            const [lixeira, kanban, decisoes] = await Promise.all([ler('lixeira'), ler('kanban'), ler('meta/decisoes_ativas')]);
+            const r = montarRestauro({ lixeira, kanban, decisoes, ts: Date.now(), por: S.operador, dia: diaChave(), chaveAud: S.db.ref(`auditoria/${diaChave()}`).push().key });
+            if (!r) { admMsg('Nada para restaurar.'); return; }
+            await S.db.ref().update(r.lote);
+            admMsg(`Painel restaurado: ${r.n} cards de volta.`, 'ok'); passo(`restaurou o painel (${r.n})`);
+        } catch (e) {
+            console.error('[NitMovel] restaurar', e);
+            admMsg(`❌ Não deu para restaurar. Nada foi mudado. (${(e && (e.code || e.message)) || e})`, 'ruim');
+        }
     }
 
     // 01/11: nenhum erro mudo na partida (sem isto, uma falha deixava o botão sem reação e a tela sem explicação)
@@ -370,6 +544,7 @@
         $('m-computador').addEventListener('click', e => { e.preventDefault(); location.href = 'index.html?versao=computador'; });
         $('m-sair').addEventListener('click', () => firebase.auth().signOut().then(() => location.reload()));
         $('m-copiar').addEventListener('click', copiarLink);
+        montarFolha();
         let retorno = false;
         const pronto = tratarRetorno().then(v => { retorno = v; }).catch(() => {});
         firebase.auth().onAuthStateChanged(async u => {

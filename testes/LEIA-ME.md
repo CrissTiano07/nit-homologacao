@@ -70,6 +70,7 @@ As falhas são **defeitos conhecidos do motor**, documentados no `HANDOFF.md` e 
 | `bateria-movel.js` | NIT Móvel: regras da lista do celular (dia, ordem, tempo, busca, "novo") |
 | `bateria-movel-desvio.js` | NIT Móvel: só ADM no celular vai para `movel.html` (`subirNIT({ celular: true })`) |
 | `movel-tela/rodar.js` | NIT Móvel na tela, navegador real com Firebase falso: `node movel-tela/rodar.js "$(npm root -g)" ..` (gera prints na pasta) |
+| `bateria-movel-paridade.js` | NIT Móvel: LIMPAR/RESTAURAR do celular = do computador (roda o NIT de verdade) |
 | `classificacao-13-1.js` | só a classificação: decisão por linha, ordem invertida, relatório real |
 
 Ao corrigir um defeito, atualize a linha de base acima.

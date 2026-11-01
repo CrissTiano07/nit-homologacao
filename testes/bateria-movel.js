@@ -87,6 +87,29 @@ reg('MV13', 'Volta do Google: aceita só o que este aparelho pediu', [
   ck(ret('#error=access_denied&state=S1').motivo === 'Login cancelado no Google.', ret('#error=access_denied&state=S1').motivo),
   ck(M.payloadJwt('lixo') === null, 'comprovante ilegível não quebra'),
 ]);
+// ── ADM no celular: limpar / restaurar / causas
+{ const kb = { a_1: { codigo: 'a' }, b_2: { codigo: 'b' } }, lix = {}; for (let i = 1; i <= 5; i++) lix[`c${i}`] = { ts: i };
+  const { lote, cards } = M.montarLimpeza({ kanban: kb, decisoes: { x: 1 }, lixeira: lix, ts: 99, por: 'Cris', email: 'c@x', turno: 'manha', dia: '01112026', chaveAud: 'K' });
+  reg('MV14', 'Limpar: mesmo lote do computador + LINHA DO TEMPO na mesma gravação; lixeira fica com 5', [
+    ck(cards === 2 && lote.kanban === null && lote['meta/decisoes_ativas'] === null && lote['meta/dataReferencia'] === null, 'apaga cards, avisos e dataReferencia'),
+    ck(lote['lixeira/c99'].cards === 2 && lote['lixeira/c99'].kanban === kb && lote['lixeira/c99'].decisoes_ativas.x === 1 && lote['lixeira/c99'].por === 'Cris', 'cópia completa'),
+    ck(lote['meta/ultimoReset'].operador === 'Cris' && lote['meta/ultimoReset'].turno === 'manha', 'ultimoReset com quem e turno'),
+    ck(lote['auditoria/01112026/K'].linhas[0] === '🧹 Painel limpo (2 cards). Cópia guardada.' && lote['auditoria/01112026/K'].tipo === 'acao', 'LINHA DO TEMPO'),
+    ck(lote['lixeira/c1'] === null && !('lixeira/c2' in lote), 'apaga só a cópia mais antiga (fica com 5)'),
+  ]); }
+{ const lix = { c1: { ts: 1, kanban: { a_1: { q: 1 } } }, c2: { ts: 2, kanban: { a_1: { q: 2 }, b_2: { q: 2 } }, decisoes_ativas: { d: 1 } } };
+  const r = M.montarRestauro({ lixeira: lix, kanban: { b_2: { novo: true }, z_9: {} }, decisoes: null, ts: 5, por: 'Cris', dia: 'D', chaveAud: 'K' });
+  const r2 = M.montarRestauro({ lixeira: { c2: { ...lix.c2, restauradoTs: 3 } }, kanban: {}, decisoes: null, ts: 5, por: 'Cris', dia: 'D', chaveAud: 'K' });
+  reg('MV15', 'Restaurar: a última cópia; quem entrou depois fica; não restaura duas vezes', [
+    ck(r.copia === 'c2' && r.n === 1 && r.lote['kanban/a_1'].q === 2 && !('kanban/b_2' in r.lote), `devolve a_1, mantém b_2 atual (n=${r.n})`),
+    ck(r.lote['meta/decisoes_ativas'].d === 1 && r.lote['lixeira/c2/restauradoTs'] === 5 && r.lote['auditoria/D/K'].linhas[0] === '↩ Painel restaurado (1 cards).', 'avisos, marca e LINHA DO TEMPO'),
+    ck(r2 === null && M.montarRestauro({ lixeira: null }) === null, 'já restaurada ou sem cópia: nada'),
+  ]); }
+{ const por = M.montar({ ...K, s1: c('s1', 'coluna-espera', '31/10/2026 09:00', { tipo: '' }), f1: c('f1', 'coluna-vl', '31/10/2026 09:00', { tipo: 'furto' }), f2: c('f2', 'coluna-normalizados', '31/10/2026 09:00', { tipo: 'FURTO' }) }, DIA), cs = M.causas(por);
+  reg('MV16', 'CAUSAS DO DIA (mesmo critério do computador) e conferência da palavra', [
+    ck(JSON.stringify(cs) === '[["ENEL",10],["FURTO",2],["SEM CAUSA",1]]', JSON.stringify(cs)),
+    ck(M.confere(' limpar ', 'LIMPAR') && !M.confere('LIMPA', 'LIMPAR') && !M.confere('', 'LIMPAR'), 'palavra'),
+  ]); }
 const f = R.filter(x => x !== 'PASSOU').length;
 console.log('RESUMO movel', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
 process.exit(f ? 1 : 0);
