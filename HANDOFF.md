@@ -105,6 +105,77 @@ Documentos citados em conversas anteriores **que não existem no repositório**:
 
 # HISTÓRICO (registro cronológico — só acrescentar)
 
+## 31/10/2026 (tarde) — NIT Móvel fase 1 no laboratório
+- Decisões do Cristiano: fase 1 só visualização; fase 2 despacho de equipe escolhida pelo supervisor; "copiar status para o grupo" restrito e para depois; "vamos devagar".
+- UX: avaliado o protótipo `supervisor.html` (estilo WhatsApp) com 42 ocorrências de crise. Adotado o esqueleto dele (busca, filtros com contagem, lista tipo conversa, "novo") com o visual da proposta (cores, fonte, hierarquia). Mudanças para a crise: totais só nos filtros, linhas de 2 andares (cerca de 10 por tela), tempo de espera no lugar da hora, mais antiga primeiro.
+- Decisão: sem tela de escolha computador/celular; desvio automático só para ADM (31/10 13:20: "vamos iniciar com visualização apenas dos adms").
+- Feito: `movel.html` + `movel.js` (novos) e `NitAdmin._irParaMovel` em `nit.js` (única mudança no NIT). BR-MOV-001.
+- Testes: `bateria-movel.js` 8/8, `bateria-movel-desvio.js` 4/4, `movel-tela/rodar.js` 9/9 (navegador real, Firebase falso); admin 6, planilha 17, barra lateral 5, virada 5, causa 3, 24-10 4: tudo passou.
+- A testar na homologação, nos celulares reais: login por pop-up no Android, iPhone e navegador interno do WhatsApp (se o pop-up falhar, o `movel.html` tenta o login por redirecionamento).
+- 31/10 23:00 — pedido: LIMPAR PAINEL com segurança contra acidente. Feito no laboratório: confirmação digitando LIMPAR (BR-ADM-001), genérica no `nitConfirm` (`rotulos.digitar`). ↩ RESTAURAR também pede a palavra RESTAURAR (decisão do Cristiano, 23:10: "e se clicar acidentalmente em RESTAURAR? O painel é prejudicado"). `bateria-admin.js` 10/10 (AD6 e AD9 travas, AD7 e AD8 a trava não vaza para outras perguntas).
+- O `supervisor.html` antigo do `sistemaintegrado` (lê `ocorrencias`, sem regra) não é usado pelo móvel.
+
+## 31/10/2026 — virada da meia-noite observada na homologação + 14.2
+- **00:00:** a virada automática passou: relatório de 31/10 processado sozinho, herança 2, Normalizados 0, CAUSAS e ATENDIDOS certos e a limpeza dos excluídos.
+- **00:1x, achado:** o TCT encerrou o 183 com 30/10 23:59 depois da meia-noite. O NIT alertou "saiu"; normalizado à mão, o card contou no dia 31 (totais 2/1/1 contra 1/1/0 da planilha). Esse defeito já existia com o relatório colado.
+- **Decisão (B):** segurar a produção até a 14.2.
+- **14.2 (BR-PLA-002):** lista `ontem` no script; o NIT fecha no dia certo, sem perguntar e sem contar hoje. Normalizar à mão com data anterior tira o card de hoje. Ação repetida em menos de 1 min entra uma vez.
+- **Script econômico:**
+  - leitura com âncora: cerca de 150 linhas por minuto, varredura de hora em hora, na virada do dia ou se a planilha for reordenada;
+  - sinal de vida em paralelo;
+  - vigia de consumo (e-mail acima de 70 min por dia; `verConsumo`).
+- **Medidor desligado em 30/10** (consumia mais de 2 h por dia da cota).
+- **Manhã de 31/10:**
+  - a 14.2 corrigiu o 183 sozinha na homologação ("normalizou ontem… Não conta hoje");
+  - na produção (13.2.2), a operadora normalizou à mão o 183 (23:59) e o 919: é o mesmo defeito ao vivo, que a 14.2 resolve.
+  - Faixa "planilha parou" de 01:19 a 06:11 na janela da homologação, mas o script rodou a noite toda (verConsumo de 15 min às 06:37). Causa: a janela ficou sem conexão (aba congelada). Por isso entrou "📵 SEM INTERNET" e "PLANILHA/COLADO" correto no clique (142homolog13).
+  - Consumo: cerca de 2,3 s por execução, cerca de 55 min por dia projetados.
+- **ATENDIDOS — regra nova decidida (31/10), para a 14.3:**
+  - conta a equipe que **chegou** ao local; a chegada é registrada à mão, **por equipe, com hora digitada**;
+  - normalizou antes da chegada: não conta;
+  - ao arrastar, o número sobe na hora ("a caminho") e volta se o card sair da coluna ou normalizar sem chegada;
+  - botão **"Cancelar"** na Central;
+  - a planilha (OPERANDO_CRUZAMENTO) recebe só as equipes que chegaram.
+  - Hoje o "Registrar Chegada" é um clique que grava a hora do clique, e há uma chegada por card, não por equipe.
+  - Na 14.2, o bloco ATENDIDOS fica escondido.
+- **07:38 de 31/10:** "Planilha parou às 05:40 / voltou" repetido várias vezes. Era a aba congelada acordando com dados velhos. Correção (142homolog15): 45 s de carência ao acordar ou reconectar, e o estado só vale se durar 30 s.
+- **31/10 ~10:00:** 14.2 publicada na produção ("autorizo" às 07:51). `diagnostico`: produção e homologação com HTTP 200. Computador configurado: notebook do Cristiano. Instruções em `COMPUTADOR-DA-CENTRAL.md`.
+- **Para a automação durar o dia todo:**
+  - um computador da central fica com o NIT aberto, com a suspensão do Windows em "Nunca";
+  - Chrome → Desempenho → Economia de memória → "Sempre manter estes sites ativos" com o endereço do NIT.
+
+## 30/10/2026 — 14.1 barra lateral (homologação 141homolog11) + decisões
+- **Barra lateral** (especificação de 22/10):
+  - sempre aberta;
+  - o título SAÍDA sai e entra uma **linha de estado** ("✓ ATUALIZADO hh:mm · PLANILHA/COLADO", "📋 N NOVIDADES · PROCESSAR", "⚠ PLANILHA PAROU");
+  - totais, depois Ver Relatório e Incluir normalizados;
+  - CAUSAS DO DIA mostra **todas** as causas (lista com barras; quando não cabe, etiquetas);
+  - ATENDIDOS VIA LIVRE · AMC.
+  - O "📋 PLANILHA" saiu do topo.
+- **ATENDIDOS (decisão do Cristiano, 30/10, "por enquanto"):**
+  - cada equipe que atuou no semáforo conta 1, uma vez por semáforo;
+  - contam despacho, apoio e rendição; ação conjunta conta para as duas;
+  - continua contando depois de normalizado.
+  - Se surgir demanda, muda.
+- **FUTURA MELHORIA (registrada a pedido, sem prazo; decidir depois de alguns dias de teste e do retorno dos envolvidos):** arraste por engano para VIA LIVRE/AMC.
+  - **Hoje:**
+    - arrastar e voltar para AGUARDANDO mantém o histórico "despacho" e a trajetória (`colunaN`), então **continua contando** em ATENDIDOS e vai para a coluna OPERANDO_CRUZAMENTO da planilha;
+    - VL→AMC logo depois vira "rendição".
+  - **Opções levantadas:**
+    - (a) **confirmação preventiva** ao soltar o card em VL/AMC;
+    - (b) **correção manual** do despacho (desfazer, com registro);
+    - (c) **janela de arrependimento** (ex.: 5 min, sem equipe/VT = engano; histórico só acrescenta "↩ desfeito");
+    - (d) começar só com **alerta/informação**.
+  - **Decisão de 30/10:** não estressar o operador agora; fica como está.
+
+## 28–29/10/2026 — 14.0: relatório da planilha do CTA (homologado; produção com "autorizo")
+- Jordan (CTA) cedeu leitura da BancoFalhas oficial; espelho na conta cristianovlivre (ESPELHO CTA - BancoFalhas, IMPORTRANGE).
+- Script `relatorio` no espelho monta o relatório a cada minuto → `fonte_planilha/` (produção e homologação). Script `medir` (medidor de ganho) no mesmo projeto, só observa.
+- NIT processa sozinho (uma janela), avisa toda mudança, faixa vermelha quando para (3 min) ou a planilha muda de formato. Regra: BR-PLA-001; textos: MENSAGENS 4h.
+- Chave antiga do Firebase (vazada no chat) revogada em 28/10; o script usa OAuth da conta, sem chave.
+- Riscos em observação: cota diária do Apps Script (~90 min/dia de acionadores), linha a meio caminho de digitação, decisões em DECIDIR sem operador olhando.
+- Pendente: exportador da planilha do NIT 14.0 (uma linha por ocorrência) em homologação; repensar a planilha do NIT (só o que o NIT acrescenta, ex.: OPERANDO_CRUZAMENTO).
+
 ## 24/10/2026 (madrugada) — homologação relatório a relatório + ajustes autorizados
 
 - Homologação 132homolog12, relatórios 1–8 gerados na conversa (hora errada, código sem zero, sem início, linha repetida, normalizado sem início, arrastos, normalizado à mão + fonte fecha, caso real 933/446 com o 902): **tudo conforme**. Falta: Parte 4 (duas janelas).

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#080c12">
+<title>NIT · Semáforos</title>
+<link rel="icon" href="data:,">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+    // Um arquivo só para os dois sites: o endereço decide o banco (homologação nunca toca a produção).
+    window.NIT_HOMOLOG = /nit-homologacao/.test(location.pathname);
+    window.addEventListener('DOMContentLoaded', () => {
+        const cfg = window.NIT_HOMOLOG ? {
+            apiKey: "AIzaSyDEAxzkLdtdTINDbu5b6WLvBDuE_FlQhus", authDomain: "nit-homologacao.firebaseapp.com",
+            databaseURL: "https://nit-homologacao-default-rtdb.firebaseio.com/", projectId: "nit-homologacao",
+            storageBucket: "nit-homologacao.firebasestorage.app",
+        } : {
+            apiKey: "AIzaSyCWAGfmCr-pHr0asIk_Sfz1WbajIEhiZn0", authDomain: "nit-operacional.firebaseapp.com",
+            databaseURL: "https://nit-operacional-default-rtdb.firebaseio.com/", projectId: "nit-operacional",
+            storageBucket: "nit-operacional.appspot.com",
+        };
+        if (window.firebase && !firebase.apps.length) firebase.initializeApp(cfg);
+        if (window.NIT_HOMOLOG) document.body.classList.add('m-homolog');
+    });
+</script>
+<style>
+:root{--s0:#080c12;--s1:#0e1620;--s2:#151f2c;--b1:rgba(100,160,230,.12);--tx1:#e2eefa;--tx2:#7f9bb8;
+--red:#F04E45;--org:#F07830;--blu:#3A96FF;--grn:#28A060;--off:#7a8fa3;--amb:#f5b400}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--s0)}
+body{color:var(--tx1);font:15px/1.35 Inter,system-ui,sans-serif;-webkit-text-size-adjust:100%;padding-bottom:env(safe-area-inset-bottom)}
+button{font:inherit;color:inherit;cursor:pointer}
+[hidden]{display:none!important}
+/* login */
+#m-login{min-height:100vh;display:grid;place-content:center;gap:18px;padding:24px;text-align:center}
+#m-login h1{font-size:22px;letter-spacing:.04em}
+#m-login p{color:var(--tx2);font-size:14px;min-height:20px}
+#m-btn-login{background:#fff;color:#111;border:0;border-radius:24px;padding:13px 22px;font-weight:700;font-size:15px}
+#m-btn-login:disabled{opacity:.5}
+/* topo */
+header{position:sticky;top:0;z-index:3;background:var(--s0);padding:12px 16px 0;border-bottom:1px solid var(--b1)}
+.m-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.m-top b{font-size:17px;letter-spacing:.04em;white-space:nowrap}
+.m-top span{font-size:12px;color:var(--tx2);white-space:nowrap}
+.m-linha{display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:12px}
+.m-estado{font-weight:800;color:var(--grn);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.m-estado.m-ruim{color:var(--red)}
+#m-resumo{color:var(--tx2);font-weight:600;white-space:nowrap}
+#m-busca{width:100%;margin:10px 0 8px;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:9px 14px;color:var(--tx1);font:inherit;font-size:16px;outline:none}
+#m-busca::placeholder{color:var(--tx2)}
+#m-busca:focus{border-color:var(--blu)}
+#m-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+#m-chips::-webkit-scrollbar{display:none}
+.m-chip{position:relative;flex:none;border:1px solid var(--b1);background:var(--s1);border-radius:16px;padding:6px 12px;font-size:13px;font-weight:700}
+.m-chip b{margin-left:5px;color:var(--c)}
+.m-chip.on{background:var(--c);border-color:var(--c);color:#fff}.m-chip.on b{color:#fff}
+.m-chip-novo{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--amb);border:2px solid var(--s0)}
+/* lista */
+.m-gh{position:sticky;top:var(--topo,150px);z-index:2;background:var(--s0);display:flex;justify-content:space-between;gap:8px;padding:12px 16px 6px;font-size:12px;font-weight:800;letter-spacing:.07em;color:var(--c)}
+.m-gh span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.m-gh small{font-size:11px;font-weight:600;letter-spacing:0;color:var(--tx2);text-transform:none}
+.m-gh em{font-style:normal;color:var(--tx2);font-weight:700;letter-spacing:0}
+.m-r{display:flex;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--b1)}
+.m-av{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent)}
+.m-m{flex:1;min-width:0}
+.m-a,.m-z{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.m-a b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-a time{flex:none;font-size:12px;color:var(--tx2)}
+.m-alerta .m-a time{color:var(--red);font-weight:800}
+.m-z{margin-top:2px;font-size:13px;color:var(--tx2)}
+.m-z span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-novo{flex:none;font-style:normal;background:var(--amb);color:#111;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:800}
+.m-vazio{padding:28px 16px;text-align:center;color:var(--tx2);font-size:14px}
+footer{display:flex;justify-content:space-between;padding:22px 16px 30px;font-size:13px}
+footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration:underline}
+.m-homolog header{border-top:4px solid #b91c1c}
+.m-homolog .m-top b::after{content:' · HOMOLOG';color:#ff6b6b;font-size:12px}
+</style>
+</head>
+<body>
+<section id="m-login">
+    <h1>🚦 NIT · SEMÁFOROS</h1>
+    <button id="m-btn-login" type="button">Entrar com Google</button>
+    <p id="m-login-status"></p>
+</section>
+
+<section id="m-app" hidden>
+    <header id="m-topo">
+        <div class="m-top"><b>🚦 NIT · SEMÁFOROS</b><span id="m-relogio"></span></div>
+        <div class="m-linha"><span id="m-estado" class="m-estado"></span><span id="m-resumo"></span></div>
+        <input id="m-busca" type="search" placeholder="🔍 Buscar código, cruzamento, equipe…" autocomplete="off" enterkeyhint="search">
+        <nav id="m-chips"></nav>
+    </header>
+    <main id="m-lista"><p class="m-vazio">Carregando...</p></main>
+    <footer><a id="m-computador" href="index.html?versao=computador">Abrir versão computador</a><button id="m-sair" type="button">Sair</button></footer>
+</section>
+<script defer src="movel.js?v=movelhomolog3"></script>
+<script>
+    // cabeçalho do grupo gruda logo abaixo do topo (a altura do topo muda com a fonte do aparelho)
+    window.addEventListener('DOMContentLoaded', () => {
+        const topo = document.getElementById('m-topo');
+        const ajusta = () => document.documentElement.style.setProperty('--topo', `${topo.offsetHeight}px`);
+        if (window.ResizeObserver) new ResizeObserver(ajusta).observe(topo); else window.addEventListener('resize', ajusta);
+    });
+</script>
+</body>
+</html>

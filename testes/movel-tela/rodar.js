@@ -1,0 +1,111 @@
+const G = process.argv[2]; const { chromium } = require(G + '/playwright');
+const fs = require('fs'), path = require('path');
+const REPO = process.argv[3], FAKE = fs.readFileSync(path.join(__dirname, 'fakefb.js'), 'utf8');
+const R = []; const ck = (ok, d) => ({ ok: !!ok, d });
+function reg(id, nome, cs) { const s = cs.every(c => c.ok) ? 'PASSOU' : 'FALHOU'; R.push(s); console.log(`${s.padEnd(7)} ${id} ${nome}`); cs.forEach(c => console.log(`   ${c.ok ? '✓' : '✗'} ${c.d}`)); }
+const DIA = '31/10/2026';
+const ruas = ['AV. BEZERRA DE MENEZES × R. DIAS DA ROCHA', 'AV. AGUANAMBI × R. VISCONDE DO RIO BRANCO', 'AV. DOMINGOS OLÍMPIO × R. OTOKAR DOLEJSCHI', 'AV. SANTOS DUMONT × AV. BARÃO DE STUDART', 'R. MONSENHOR TABOSA × R. JOAQUIM NABUCO', 'AV. WASHINGTON SOARES × R. CORONEL JUCÁ', 'AV. DOM LUÍS × R. CEL. JUCÁ', 'AV. GODOFREDO MACIEL × R. ANTÔNIO BANDEIRA'];
+const causas = ['ENEL', 'FURTO', 'FALHA DE EQUIPAMENTO', 'ENEL', 'ROMPIMENTO', 'ABALROAMENTO'];
+function crise() {
+  const k = {}; let n = 0;
+  const add = (col, qtd, extra = () => ({})) => { for (let i = 0; i < qtd; i++, n++) {
+    const min = 30 + n * 13, hh = Math.max(0, 11 - Math.floor(min / 60)), mm = 59 - (min % 60);
+    const cod = String(100 + n * 17 % 900);
+    k[`${cod}_${n}`] = { codigo: cod, coluna: col, dataReferencia: DIA, inicio: `${DIA} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, endereco: ruas[n % 8], problema: n % 3 ? 'APAGADO' : 'PISCANTE', tipo: causas[n % 6], ...extra(i) };
+  } };
+  add('coluna-espera', 18);
+  add('coluna-vl', 6, i => ({ equipe: ['FREITAS', 'MOURA', 'SILVA'][i % 3], viatura: `0${i + 1}`, tsDespacho: Date.now() - (20 + i * 15) * 60000 }));
+  add('coluna-amc', 5, i => ({ equipe: ['LIMA', 'COSTA'][i % 2], viatura: `VT 1${i}` }));
+  add('coluna-sem-necessidade', 4);
+  add('coluna-normalizados', 9, i => ({ data_fim: DIA, hora_fim: `${String(8 + i).padStart(2, '0')}:1${i}` }));
+  k['999_ontem'] = { codigo: '999', coluna: 'coluna-espera', dataReferencia: '30/10/2026', inicio: '30/10/2026 10:00', endereco: 'ONTEM' };
+  return k;
+}
+const U = { email: 'Teste.Adm@Gmail.com', uid: 'u1' };
+async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html', vistos) {
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(([f, v]) => { window.__FB = f; if (v) localStorage.setItem('nit-movel-vistos', v); }, [F, vistos || null]);
+  await ctx.route('**/*', r => {
+    const u = new URL(r.request().url());
+    if (u.hostname === 'www.gstatic.com') return r.fulfill({ contentType: 'text/javascript', body: /app-compat/.test(u.pathname) ? FAKE : '' });
+    if (u.hostname === 'nit.teste') { const f = path.join(REPO, path.basename(u.pathname)); return fs.existsSync(f) ? r.fulfill({ path: f }) : r.fulfill({ status: 200, body: `PAGINA ${u.pathname}${u.search}` }); }
+    return r.abort();
+  });
+  const p = await ctx.newPage(); const erros = []; p.on('pageerror', e => erros.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load/.test(m.text())) erros.push(m.text()); });
+  await p.goto(url); await p.waitForTimeout(500); return { p, ctx, erros };
+}
+(async () => {
+  const b = await chromium.launch();
+  const base = { estado: { kanban: crise(), usuarios_autorizados: { 'teste|adm|gmail|com': { nome: 'Adm', ativo: true }, 'teste|op|gmail|com': { nome: 'Op' } }, nit_admins: { 'teste|adm|gmail|com': true }, meta: { ultimo_processamento: { ts: Date.now() - 120000, planilha: true } } }, online: true };
+  // E1 ADM: lista do dia
+  { const { p, ctx, erros } = await abrir(b, { ...base, usuario: U });
+    const chips = await p.$$eval('.m-chip', xs => xs.map(x => x.textContent));
+    const linhas = await p.$$eval('.m-r', xs => xs.length);
+    const primeiro = await p.$eval('.m-r time', x => x.textContent);
+    const tempos = await p.$$eval('.m-r', xs => xs.map(x => x.querySelector('time').textContent));
+    await p.screenshot({ path: path.join(__dirname, 'movel-aguardando.png') });
+    reg('E1', 'ADM abre: Aguardando, 18 linhas, mais antiga primeiro, totais batem', [
+      ck(chips.join('|') === 'Aguardando18|Via Livre6|AMC5|Sem nec.4|Normalizados9|Todos42', chips.join(' | ')),
+      ck(linhas === 18, `${linhas} linhas`), ck(/^há \d+h/.test(primeiro), `1ª linha: ${primeiro}`),
+      ck(await p.$eval('#m-resumo', x => x.textContent) === '33 pend. · 9 norm.', await p.$eval('#m-resumo', x => x.textContent)),
+      ck(/ATUALIZADO \d\d:\d\d · PLANILHA/.test(await p.$eval('#m-estado', x => x.textContent)), await p.$eval('#m-estado', x => x.textContent)),
+      ck(!erros.length, `erros: ${erros.join('; ') || 'nenhum'}`),
+      ck(!(await p.evaluate(() => window.__FB.cfg.databaseURL)).includes('homologacao'), 'endereço de produção usa o banco de produção'),
+    ]);
+    await p.click('.m-chip >> text=Via Livre'); await p.waitForTimeout(100);
+    const sub = await p.$eval('.m-r .m-z span', x => x.textContent);
+    await p.screenshot({ path: path.join(__dirname, 'movel-vialivre.png') });
+    await p.click('.m-chip >> text=Todos'); await p.fill('#m-busca', 'aguanambi'); await p.waitForTimeout(100);
+    const achou = await p.$$eval('.m-r', xs => xs.length);
+    await p.fill('#m-busca', ''); await p.waitForTimeout(100); await p.mouse.wheel(0, 1600); await p.waitForTimeout(200);
+    await p.screenshot({ path: path.join(__dirname, 'movel-todos-rolado.png') });
+    const gh = await p.evaluate(() => { const t = document.getElementById('m-topo').getBoundingClientRect().bottom; const g = [...document.querySelectorAll('.m-gh')].find(x => Math.abs(x.getBoundingClientRect().top - t) < 2); return g ? g.textContent : null; });
+    reg('E2', 'Filtro Via Livre, busca e cabeçalho do grupo preso no topo', [
+      ck(/ · VT 0\d$/.test(sub), `Via Livre mostra equipe: ${sub}`), ck(achou === 6, `busca "aguanambi" em Todos: ${achou} (6 esperadas: 42/8 ruas)`),
+      ck(gh, `cabeçalho preso ao rolar: ${gh}`),
+    ]);
+    // ao vivo: um card novo chega
+    await p.click('.m-chip >> text=Aguardando');
+    await p.evaluate(() => { window.__FB.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-espera', dataReferencia: '31/10/2026', inicio: '31/10/2026 11:58', endereco: 'AV. NOVA', problema: 'APAGADO', tipo: 'ENEL' }; window.__FBemitir(); });
+    await p.waitForTimeout(150);
+    const ult = await p.$$eval('.m-r', xs => xs.map(x => x.querySelector('.m-av').textContent + (x.querySelector('.m-novo') ? '*' : '')));
+    reg('E3', '1ª visita no aparelho: card que chega ao vivo aparece, sem "novo"', [ck(ult.length === 19 && ult.includes('777'), `${ult.length} linhas; 777 = ${ult.find(x => x.startsWith('777'))}`)]);
+    // sai do app (guarda vistos), volta depois com 2 mudanças
+    await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    const vistos = await p.evaluate(() => localStorage.getItem('nit-movel-vistos'));
+    await ctx.close();
+    const F2 = JSON.parse(JSON.stringify({ ...base, usuario: U })); F2.estado.kanban = crise(); F2.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-vl', dataReferencia: DIA, inicio: `${DIA} 11:58`, endereco: 'AV. NOVA', equipe: 'SILVA', viatura: '09' };
+    F2.estado.kanban['888_n'] = { codigo: '888', coluna: 'coluna-espera', dataReferencia: DIA, inicio: `${DIA} 12:01`, endereco: 'AV. OUTRA', problema: 'PISCANTE', tipo: 'FURTO' };
+    const s2 = await abrir(b, F2, undefined, vistos);
+    const novos = await s2.p.$$eval('.m-r', xs => xs.filter(x => x.querySelector('.m-novo')).map(x => x.querySelector('.m-av').textContent));
+    const pontos = await s2.p.$$eval('.m-chip', xs => xs.filter(x => x.querySelector('.m-chip-novo')).map(x => x.firstChild.textContent));
+    await s2.p.screenshot({ path: path.join(__dirname, 'movel-novo.png') });
+    reg('E4', 'Volta depois: "novo" no que entrou ou mudou de coluna; ponto no filtro', [
+      ck(novos.join() === '888', `novos em Aguardando: ${novos.join() || 'nenhum'}`), ck(pontos.join() === 'Aguardando,Via Livre', `filtros com ponto: ${pontos.join()}`)]);
+    await s2.ctx.close(); }
+  // E5 operador comum → computador
+  { const { p, ctx } = await abrir(b, { ...base, usuario: { email: 'teste.op@gmail.com' } });
+    reg('E5', 'Operador comum no movel.html: volta para o NIT de computador', [ck(p.url().endsWith('index.html?versao=computador'), p.url())]); await ctx.close(); }
+  // E6 não autorizado
+  { const { p, ctx } = await abrir(b, { ...base, usuario: { email: 'estranho@gmail.com' } });
+    const st = await p.$eval('#m-login-status', x => x.textContent);
+    reg('E6', 'Não autorizado: fica no login com aviso e é desconectado', [ck(/não autorizado/i.test(st) && await p.$eval('#m-app', x => x.hidden), st)]); await ctx.close(); }
+  // E7 sem sessão → login → entra
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, proximo: U });
+    const antes = await p.$eval('#m-login', x => !x.hidden);
+    await p.screenshot({ path: path.join(__dirname, 'movel-login.png') });
+    await p.click('#m-btn-login'); await p.waitForTimeout(400);
+    reg('E7', 'Sem sessão: tela de login; após entrar, abre a lista', [ck(antes, 'login visível'), ck(await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta')]); await ctx.close(); }
+  // E8 sem internet
+  { const { p, ctx } = await abrir(b, { ...base, usuario: U });
+    await p.evaluate(() => { window.__FB.online = false; window.__FBemitir(); }); await p.waitForTimeout(1000);
+    const cedo = await p.$eval('#m-estado', x => x.textContent);
+    await p.waitForTimeout(4500); const depois = await p.$eval('#m-estado', x => x.textContent);
+    reg('E8', 'Sem internet: espera 5 s (oscilação não assusta), depois avisa', [ck(/ATUALIZADO/.test(cedo), `após 1 s: ${cedo}`), ck(/SEM INTERNET/.test(depois), `após 5,5 s: ${depois}`)]); await ctx.close(); }
+  // E9 homologação usa o banco de teste
+  { const { p, ctx } = await abrir(b, { ...base, usuario: U }, 'http://nit.teste/nit-homologacao/movel.html');
+    reg('E9', 'Endereço de homologação usa o banco nit-homologacao e mostra a marca', [ck((await p.evaluate(() => window.__FB.cfg.databaseURL)).includes('homologacao'), 'banco nit-homologacao'), ck(await p.$eval('body', x => x.classList.contains('m-homolog')), 'marca HOMOLOG')]);
+    await p.screenshot({ path: path.join(__dirname, 'movel-homolog.png') }); await ctx.close(); }
+  await b.close();
+  const f = R.filter(x => x !== 'PASSOU').length; console.log('RESUMO movel-tela', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
+})();

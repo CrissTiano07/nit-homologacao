@@ -2298,3 +2298,9 @@ body.nit-planilha-parada #relatorio-bruto-input { outline: 3px solid #ef4444; ou
 #sb-causas.sb-causas-etiquetas .sb-causa { margin: 0; padding: 2px 7px; border-radius: 4px; background: rgba(148,163,184,.14); gap: 6px; font-size: 11px; }
 #sb-causas.sb-causas-etiquetas .sb-causa i { display: none; }
 .sb-atendidos[hidden], .sb-resumo-tit[hidden] { display: none !important; }
+
+/* 14.3 (31/10): confirmar ação perigosa digitando a palavra */
+#nit-confirmar-digitar { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+#nit-confirmar-digitar-campo { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-secondary, #0e1620); color: inherit; font: inherit; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+#nit-confirmar-digitar-campo:focus { outline: none; border-color: var(--color-danger); }
+#btn-confirmar-generico-ok:disabled { opacity: .35; cursor: not-allowed; }

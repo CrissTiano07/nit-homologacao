@@ -871,8 +871,18 @@
             const db = NitFirebase.db, chave = this._chave();
             if (!db || !chave) return;
             db.ref(`nit_admins/${chave}`).once('value')
-                .then(s => { this.ehAdmin = s.val() === true; if (this.ehAdmin) this._botoes(); })
+                .then(s => { this.ehAdmin = s.val() === true; if (this.ehAdmin) { if (this._irParaMovel()) return; this._botoes(); } })
                 .catch(() => { this.ehAdmin = false; });   // sem permissão de leitura = não é ADM
+        },
+        // 14.3 (31/10, NIT Móvel fase 1): ADM no celular vai para movel.html (só visualização).
+        // Quem não é ADM não muda nada. "Abrir versão computador" chega com ?versao=computador e fica aqui.
+        _irParaMovel() {
+            try {
+                if (/versao=computador/.test(location.search)) return false;
+                if (!window.matchMedia || !matchMedia('(pointer: coarse) and (max-width: 900px)').matches) return false;
+                location.replace('movel.html');
+                return true;
+            } catch (e) { return false; }   // nunca bloqueia o NIT
         },
         _botoes(tentativa = 0) {
             if (document.getElementById('nit-admin-limpar')) return;
@@ -897,7 +907,7 @@
             const n = document.querySelectorAll('#tab-semaforo .kanban-card').length;
             nitConfirm('🧹 LIMPAR O PAINEL?',
                 `Apaga os ${n} cards e os avisos para *todos os operadores*.\nFica uma cópia: dá para RESTAURAR depois.`,
-                () => this._limpar(), null, { ok: 'LIMPAR', cancelar: 'CANCELAR', seguro: 'cancelar' });
+                () => this._limpar(), null, { ok: 'LIMPAR', cancelar: 'CANCELAR', seguro: 'cancelar', digitar: 'LIMPAR' });
         },
         async _limpar() {
             const db = NitFirebase.db; if (!db) return;
@@ -927,7 +937,7 @@
             if (!this.ehAdmin) return;
             nitConfirm('↩ RESTAURAR O PAINEL?',
                 'Devolve os cards e os avisos do último painel limpo.\nCards que entraram depois continuam.',
-                () => this._restaurar(), null, { ok: 'RESTAURAR', cancelar: 'CANCELAR' });
+                () => this._restaurar(), null, { ok: 'RESTAURAR', cancelar: 'CANCELAR', seguro: 'cancelar', digitar: 'RESTAURAR' });   // 31/10: devolver cards por engano também prejudica o painel
         },
         async _restaurar() {
             const db = NitFirebase.db; if (!db) return;
@@ -1555,6 +1565,8 @@ const NitData = {
         // 13.2: rótulos opcionais (ex.: NIT-02 USAR / CANCELAR); voltam ao padrão ao fechar
         const estilo = { ok: okEl?.getAttribute('style'), can: canEl?.getAttribute('style'), tit: titEl.getAttribute('style') };
         const padrao = () => {
+            document.getElementById('nit-confirmar-digitar')?.remove();
+            if (okEl)  { okEl.disabled = false; okEl.removeAttribute('title'); }
             if (okEl)  { okEl.textContent  = 'Confirmar'; okEl.setAttribute('style', estilo.ok || ''); }
             if (canEl) { canEl.textContent = 'Cancelar';  canEl.setAttribute('style', estilo.can || ''); }
             titEl.setAttribute('style', estilo.tit || '');
@@ -1569,6 +1581,23 @@ const NitData = {
         }
         titEl.textContent = titulo;
         msgEl.innerHTML   = mensagem.replace(/\n/g, '<br>').replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+        // 14.3 (31/10): ação perigosa (ex.: LIMPAR PAINEL) só confirma digitando a palavra; Enter ou clique sozinho não bastam
+        document.getElementById('nit-confirmar-digitar')?.remove();
+        if (okEl) { okEl.disabled = false; okEl.removeAttribute('title'); }   // fechado por outro caminho: não herda o bloqueio
+        if (rotulos?.digitar && okEl) {
+            const palavra = String(rotulos.digitar).toUpperCase();
+            const box = document.createElement('div'); box.id = 'nit-confirmar-digitar';
+            const rot = document.createElement('label'); rot.htmlFor = 'nit-confirmar-digitar-campo';
+            rot.append('Para confirmar, digite ', Object.assign(document.createElement('strong'), { textContent: palavra }), ':');
+            const campo = document.createElement('input'); campo.id = 'nit-confirmar-digitar-campo'; campo.type = 'text';
+            campo.autocomplete = 'off'; campo.spellcheck = false; campo.setAttribute('autocapitalize', 'characters');
+            const confere = () => { const ok = campo.value.trim().toUpperCase() === palavra; okEl.disabled = !ok; okEl.title = ok ? '' : `Digite ${palavra} para liberar`; };
+            campo.addEventListener('input', confere);
+            campo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (!okEl.disabled) okEl.click(); } });
+            box.append(rot, campo); msgEl.insertAdjacentElement('afterend', box);
+            confere();
+            setTimeout(() => { try { campo.focus(); } catch (e) { /* sem foco: segue */ } }, 50);
+        }
         _confirmCb = () => { padrao(); onConfirm(); };
         _cancelCb  = () => { padrao(); if (onCancel) onCancel(); };
         abrirModal(modal);
@@ -3985,6 +4014,7 @@ const NitData = {
     var can = document.getElementById('btn-confirmar-generico-cancel');
     if (ok) {
         ok.addEventListener('click', function() {
+            if (ok.disabled) return;   // 14.3: palavra ainda não digitada
             fecharModal(mc);
             if (_confirmCb) { _confirmCb(); _confirmCb = null; }
             _cancelCb = null;

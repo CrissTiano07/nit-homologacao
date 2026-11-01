@@ -1095,5 +1095,88 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
 - Só quem tem `nit_admins/{chave}: true` (gravado pelo console) vê **🧹 LIMPAR PAINEL**. A segurança é a **regra do banco**, não o botão escondido.
 - Limpa **cards (`kanban`) + avisos (`meta/decisoes_ativas`)**. A LINHA DO TEMPO fica e registra "🧹 Painel limpo (N cards). Cópia guardada.".
 - Antes de apagar, guarda a cópia em `lixeira/c{ts}` (quem, quando, cards, avisos) — na MESMA gravação (tudo ou nada). Guarda só as **5 últimas**.
+- **Confirmação digitada (31/10, pedido do Cristiano: evitar limpar por acidente):** a pergunta traz um campo "Para confirmar, digite LIMPAR". O botão LIMPAR fica travado até a palavra estar certa (maiúsculas, minúsculas ou espaço não importam); clique ou Enter sem a palavra não fazem nada. O destaque continua em CANCELAR. Cancelar no meio não deixa a próxima pergunta travada.
+- **↩ RESTAURAR também pede palavra (31/10, decisão do Cristiano):** digitar RESTAURAR. Devolver por engano os cards de um relatório errado também prejudica o painel.
 - **↩ RESTAURAR** (só ADM) devolve o último painel limpo; cards que entraram depois continuam (não sobrescreve). Registra "↩ Painel restaurado (N cards).".
+
+
+## BR-PLA-001 — Relatório da planilha do CTA (14.0, homologado em 29/10/2026)
+
+- **Fonte:** a aba BancoFalhas da planilha do CTA (09_CTA_FalhasSemaforos_TempoReal2026), com acesso só de leitura cedido pelo Jordan (CTA) em 28/10/2026. O relatório do WhatsApp é uma cópia dela.
+- **Regra do dia D (conferida com os 23 relatórios reais de 23/10):** entra toda linha com início até o fim do dia D e fim no dia D ou sem fim. Sem fim = pendente.
+- **Montagem:** um script no ESPELHO CTA (conta cristianovlivre) monta, a cada minuto, o **mesmo texto do relatório CEMOB**. Ele grava em `fonte_planilha/conteudo` só quando o texto muda, e o sinal de vida vai a cada minuto em `fonte_planilha/verificadoEm`. Não usa chave do banco: o acesso é o da conta Google dona dos projetos.
+- **Motor:** o NIT processa esse texto **pelo mesmo caminho de colar o relatório**. Nenhuma regra de classificação muda, e a contagem bate porque a fonte é a mesma.
+- **Uma janela só:** cada versão (assinatura) é processada por uma janela, a que grava primeiro em `meta/planilha_processada`. Se ela travar, outra assume depois de 2 minutos, uma vez por versão.
+- **Não processa sozinho, espera o operador:**
+  - relatório com data diferente de hoje;
+  - código de 1 dígito;
+  - pergunta aberta na tela;
+  - texto colado no campo.
+- **Linha com fim ilegível** (ex.: fim digitado na coluna da data) fica fora do relatório e vai para `conferir`.
+- **Automação parada:** depois de 3 minutos sem sinal de vida, ou com o cabeçalho da planilha diferente do esperado (`fonte_planilha/erro`):
+  - aparece a faixa vermelha "⚠ PLANILHA PAROU ÀS hh:mm · COLE O RELATÓRIO DO WHATSAPP" (ou "MUDOU DE FORMATO");
+  - o título da aba vira "⚠ PAROU";
+  - sai uma notificação do sistema;
+  - a LINHA DO TEMPO registra a parada e a volta.
+  Colar o relatório funciona sempre (plano B).
+- **Toda mudança avisa**, porque pede atualização imediata no grupo:
+  - na tela: aviso passageiro piscando (canto inferior direito) e a borda do card pisca 8 vezes e apaga, sem contorno fixo (decisão de 30/10/2026);
+  - fora da tela: número no título, título e ícone da aba piscando em vermelho, e notificação do sistema (uma por versão, fica até o clique), que abre a SAÍDA.
+- **Sem o nó `fonte_planilha`**, nada aparece e o NIT funciona como antes.
+
+## BR-SB-001 — Barra lateral de Semáforos (14.1, especificação de 22/10/2026; homologado em 30/10/2026)
+
+- **Sempre aberta.** O botão de recolher e o atalho `[` saem, e a preferência antiga do navegador é ignorada.
+- **No lugar do título "SAÍDA" entra uma linha de estado**, que diz de quando e de onde são os totais (ver MENSAGENS 4h).
+  - A hora vem do último processamento de qualquer operador (`meta/ultimo_processamento`), ou da planilha (`meta/planilha_processada`) enquanto não houver processamento novo.
+  - Clicar na linha processa a planilha.
+- **Ordem da SAÍDA:**
+  1. linha de estado;
+  2. totais (Ocorrências · Pendentes · Normalizados);
+  3. Ver Relatório e Incluir normalizados;
+  4. CAUSAS DO DIA;
+  5. ATENDIDOS.
+- **A caixa de pré-visualização sai da tela.** O texto do relatório de saída não muda.
+- **CAUSAS DO DIA:**
+  - mostra todas as causas dos cards que entram em Ocorrências, da maior para a menor, só as que ocorreram; a soma é igual a Ocorrências;
+  - quando não cabe, as mesmas causas viram etiquetas lado a lado, e nenhuma é escondida.
+- **ATENDIDOS: escondido na 14.2 (decisão de 31/10).** Volta na 14.3 com a regra nova: conta a equipe que **chegou** ao local (chegada por equipe, hora digitada); ao arrastar, conta como "a caminho" e sai da conta se o card sair da coluna ou normalizar sem chegada; "Cancelar" na Central. A regra abaixo, de 30/10, foi substituída:
+- **ATENDIDOS (decisão de 30/10, "por enquanto"):**
+  - cada equipe que atuou no semáforo conta 1, uma vez por semáforo;
+  - contam despacho, apoio e rendição, pela trajetória `colunaN`; ação conjunta conta para as duas;
+  - continua contando depois de normalizado.
+  - Arraste por engano também conta (melhoria futura, ver HANDOFF de 30/10).
+- **Topo:** só o estado do sistema (Firebase e ✓ SALVO). Nada quebra linha; em tela estreita, a busca encolhe e o nome do operador some abaixo de 1400 px.
+
+## BR-PLA-002 — Encerrado depois da meia-noite com hora de ontem (14.2, pedido do Cristiano em 31/10/2026)
+
+- **Caso:** um pendente atravessa a meia-noite e vira herança do dia novo (BR-CON-005). Depois, o CTA preenche o fim com hora do dia anterior (ex.: 23:59). Pela regra do CTA, a ocorrência é do dia anterior e sai do relatório de hoje.
+- **Antes:** o NIT alertava "SAIU DO RELATÓRIO". Normalizado à mão, o card continuava no dia de hoje, contava nos totais (que ficavam diferentes dos do CTA) e ficava "aguardando a fonte" para sempre.
+- **Com a planilha:** o script manda também a lista `ontem`, o que normalizou no dia anterior. Quando código, início e fim antes de hoje batem com um card do painel que não está no relatório de hoje, o NIT:
+  - normaliza o card com o fim da planilha;
+  - volta a `dataReferencia` para o dia do fim;
+  - limpa "à mão" e o alerta NIT-10;
+  - não pergunta nada;
+  - registra na LINHA DO TEMPO: "✓ 183 normalizou ontem (30/10) às 23:59: atualizado na planilha depois da meia-noite. Não conta hoje."
+- **Não bateu exatamente** (código, início ou data): alerta como antes. Nada é decidido no escuro (BR-CON-009).
+- **Normalizar à mão com data de um dia anterior:** a ocorrência passa a ser daquele dia (`dataReferencia` = data do fim) e sai dos totais, das CAUSAS e dos ATENDIDOS de hoje. Vale também para o relatório colado.
+- **A mesma ação repetida na LINHA DO TEMPO em menos de 1 minuto** (clique duplo) entra uma vez só.
+- **Sem conexão com o banco não é "planilha parou":** com `.info/connected` falso (internet caída, aba congelada pelo navegador), a faixa diz "📵 SEM INTERNET". "Planilha parou" fica só para quando a conexão existe e o script não dá sinal. O clique na linha de estado registra a origem como PLANILHA.
+- **Sem pisca-pisca (31/10):** ao abrir, ao voltar à aba ou ao reconectar, o NIT espera 45 s pelos dados novos antes de julgar; "parou" e "sem internet" só valem se durarem 30 s. "Voltou" só é registrado se "parou" tiver sido registrado. "Mudou de formato" continua imediato.
+
+## BR-MOV-001 — NIT Móvel, fase 1: só visualização, só ADM (decisões do Cristiano em 31/10/2026)
+
+- **Quem:** só ADM (`nit_admins/{chave}: true`). Operador comum continua no NIT de sempre, também no celular.
+- **Como chega:** mesmo endereço e mesmo login do NIT. ADM em tela de toque com até 900 px de largura vai para `movel.html`. No computador nada muda. "Abrir versão computador" leva a `index.html?versao=computador`, que não desvia.
+- **No `movel.html`:** confere `usuarios_autorizados` e `nit_admins` de novo. Quem não é ADM volta para o NIT de computador; não autorizado é desconectado.
+- **O que mostra:** os cards do dia (`dataReferencia` = hoje, sem retirados), pela coluna, igual aos totais do computador.
+  - Aguardando: a mais antiga primeiro, com "há Xh". 2 h ou mais fica vermelho.
+  - Via Livre e AMC: equipe, viatura, apoio e "desp. há X".
+  - Normalizados: o mais recente primeiro, "às HH:MM".
+  - Busca por código, cruzamento, causa e equipe; filtros com contagem; cabeçalho do grupo preso no topo.
+  - "novo": card que entrou ou mudou de coluna desde a última visita naquele aparelho. Na primeira visita, nada é novo.
+  - Linha de estado: hora do último processamento e origem; "SEM INTERNET" só se durar 5 s.
+- **Não grava nada no banco.** Lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
+- **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.
+- **Fica para depois:** copiar status para o grupo (restrito); despacho de equipe pelo supervisor (fase 2); perfil por usuário.
 
