@@ -118,6 +118,8 @@ Documentos citados em conversas anteriores **que não existem no repositório**:
 - Feito (movelhomolog4): `bateria-movel.js` 11/11, `movel-tela/rodar.js` 14/14 (datas agora relativas a hoje; antes o teste envelhecia na virada do dia).
 - 01/11 01:33–01:47 — movelhomolog4 (conferido no repositório: commit 1975dc5, arquivos iguais ao pacote) também volta à tela de login no Safari do iPhone. A janela (pop-up) depende do mesmo armazenamento do firebaseapp.com.
 - Feito no laboratório (movelhomolog5): "ir e voltar" pela própria página (OIDC `id_token` + `signInWithCredential`), rastro do login na tela. `bateria-movel.js` 13/13, `movel-tela/rodar.js` 19/19 (Google simulado: volta certa, nonce errado, cancelado, conta fora da lista, Firebase recusa). Aguardando do Cristiano: ID do cliente da Web (homologação) + 2 linhas no Google Cloud.
+- 01/11 ~10:40 — Google Cloud (homologação): origem `https://crisstiano07.github.io` e volta `…/nit-homologacao/movel.html` acrescentadas pelo Cristiano. ID do cliente da Web (homologação): `865942699083-attv4bvu….apps.googleusercontent.com`.
+- 01/11 11:00 — o link de uso é o normal (`…/nit-homologacao/`). movelhomolog6: no celular, o `index.html` abre o `movel.html` antes do login; não-ADM volta com `?versao=computador`. `bateria-movel-desvio.js` 6/6; admin 10, barra lateral 5, planilha 17, 24-10 4.
 - O `supervisor.html` antigo do `sistemaintegrado` (lê `ocorrencias`, sem regra) não é usado pelo móvel.
 
 ## 31/10/2026 — virada da meia-noite observada na homologação + 14.2

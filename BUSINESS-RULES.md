@@ -1167,7 +1167,7 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
 ## BR-MOV-001 — NIT Móvel, fase 1: só visualização, só ADM (decisões do Cristiano em 31/10/2026)
 
 - **Quem:** só ADM (`nit_admins/{chave}: true`). Operador comum continua no NIT de sempre, também no celular.
-- **Como chega:** mesmo endereço e mesmo login do NIT. ADM em tela de toque com até 900 px de largura vai para `movel.html`. No computador nada muda. "Abrir versão computador" leva a `index.html?versao=computador`, que não desvia.
+- **Como chega (01/11, pedido do Cristiano: "o link é esse …/nit-homologacao/"):** no celular (toque, até 900 px), o endereço normal do NIT abre o `movel.html` **antes do login**, porque o login do `index.html` não funciona no iPhone. Lá a pessoa entra; quem não é ADM volta para `index.html?versao=computador` já logado (mesma sessão do site). Antes de 01/11: ADM em tela de toque com até 900 px de largura vai para `movel.html`. No computador nada muda. "Abrir versão computador" leva a `index.html?versao=computador`, que não desvia.
 - **No `movel.html`:** confere `usuarios_autorizados` e `nit_admins` de novo. Quem não é ADM volta para o NIT de computador; não autorizado é desconectado.
 - **O que mostra:** os cards do dia (`dataReferencia` = hoje, sem retirados), pela coluna, igual aos totais do computador.
   - Aguardando: a mais antiga primeiro, com "há Xh". 2 h ou mais fica vermelho.

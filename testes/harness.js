@@ -174,7 +174,7 @@ function criarRelogio(isoLocal) {
 }
 
 // ── Sobe o NIT ──────────────────────────────────────────────────────────────
-async function subirNIT({ estado, relogioIso, fb: fbCompartilhado, celular = false }) {
+async function subirNIT({ estado, relogioIso, fb: fbCompartilhado, celular = false, url = 'https://nit.teste/index.html' }) {
   const relogio = criarRelogio(relogioIso);
   // fb compartilhado = dois operadores no mesmo banco (opcional, retrocompatível)
   const fb = fbCompartilhado || criarFirebaseFalso(estado, relogio);
@@ -197,7 +197,7 @@ async function subirNIT({ estado, relogioIso, fb: fbCompartilhado, celular = fal
 
   const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
   const dom = new JSDOM(html, {
-    url: 'https://nit.teste/index.html',
+    url,
     runScripts: 'dangerously',
     resources: new Loader(),
     pretendToBeVisual: true,

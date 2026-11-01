@@ -3,6 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        // NIT Móvel (01/11/2026): no celular, o endereço normal do NIT abre o movel.html, que tem o login que funciona
+        // no iPhone. Quem não é ADM volta para cá com ?versao=computador (e aqui fica). Computador: nada muda.
+        (function () {
+            try {
+                if (/versao=computador/.test(location.search)) return;
+                if (window.matchMedia && matchMedia('(pointer: coarse) and (max-width: 900px)').matches) location.replace('movel.html');
+            } catch (e) { /* nunca bloqueia o NIT */ }
+        })();
+    </script>
 
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://www.gstatic.com">
@@ -48,7 +58,7 @@
     <title>NIT — HOMOLOGAÇÃO (teste)</title>
     <link rel="icon" href="data:,">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="nit.css?v=movelhomolog5">
+        <link rel="stylesheet" href="nit.css?v=movelhomolog6">
     <link rel="stylesheet" href="reboques.css?v=20260709">
 
 </head>
@@ -942,7 +952,7 @@
 
     <!-- APP LOGIC ──────────────────────────────────────────────────────── -->
     
-    <script src="nit.js?v=movelhomolog5"></script>
+    <script src="nit.js?v=movelhomolog6"></script>
     <script src="reboques.js?v=20260709"></script>
 
 </body>
