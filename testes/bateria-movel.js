@@ -67,6 +67,26 @@ reg('MV11', 'Erro de login sempre com motivo e código (nenhum erro mudo)', [
   ck(M.motivo('auth/popup-blocked') === 'Este navegador bloqueou a janela do Google. (auth/popup-blocked)', M.motivo('auth/popup-blocked')),
   ck(M.motivo('auth/xyz') === 'Não foi possível entrar. (auth/xyz)' && M.motivo(undefined) === 'Não foi possível entrar. (sem código)', `${M.motivo('auth/xyz')} | ${M.motivo(undefined)}`),
 ]);
+// ── login ir e voltar pela própria página
+const jwt = p => ['e30', Buffer.from(JSON.stringify(p)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), 'x'].join('.');
+const u = new URL(M.urlGoogle('123.apps.googleusercontent.com', 'https://crisstiano07.github.io/nit-homologacao/movel.html', 'N1', 'S1'));
+reg('MV12', 'Pedido ao Google: só comprovante de identidade (id_token), com nonce e state, voltando ao próprio movel.html', [
+  ck(u.origin + u.pathname === 'https://accounts.google.com/o/oauth2/v2/auth', u.origin + u.pathname),
+  ck(u.searchParams.get('response_type') === 'id_token' && u.searchParams.get('scope') === 'openid email profile', 'response_type=id_token, scope openid email profile (sem token de acesso)'),
+  ck(u.searchParams.get('nonce') === 'N1' && u.searchParams.get('state') === 'S1' && u.searchParams.get('redirect_uri') === 'https://crisstiano07.github.io/nit-homologacao/movel.html', 'nonce, state e endereço de volta'),
+]);
+const G = { nonce: 'N1', state: 'S1', ts: agora - 60000 }, tok = jwt({ nonce: 'N1', email: 'cristianovlivre@gmail.com' });
+const ret = h => M.conferirRetorno(M.lerRetorno(h), G, agora);
+reg('MV13', 'Volta do Google: aceita só o que este aparelho pediu', [
+  ck(M.lerRetorno('') === null && M.lerRetorno('#x=1') === null, 'sem retorno → nada a fazer'),
+  ck(ret(`#state=S1&id_token=${tok}`).ok && ret(`#state=S1&id_token=${tok}`).email === 'cristianovlivre@gmail.com', 'certo → aceita'),
+  ck(!ret(`#state=OUTRO&id_token=${tok}`).ok, 'state diferente → recusa'),
+  ck(!ret(`#state=S1&id_token=${jwt({ nonce: 'N2' })}`).ok, 'nonce diferente → recusa'),
+  ck(!M.conferirRetorno(M.lerRetorno(`#state=S1&id_token=${tok}`), { ...G, ts: agora - 11 * 60000 }, agora).ok, 'mais de 10 min → recusa'),
+  ck(!M.conferirRetorno(M.lerRetorno(`#state=S1&id_token=${tok}`), null, agora).ok, 'sem pedido guardado → recusa'),
+  ck(ret('#error=access_denied&state=S1').motivo === 'Login cancelado no Google.', ret('#error=access_denied&state=S1').motivo),
+  ck(M.payloadJwt('lixo') === null, 'comprovante ilegível não quebra'),
+]);
 const f = R.filter(x => x !== 'PASSOU').length;
 console.log('RESUMO movel', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
 process.exit(f ? 1 : 0);

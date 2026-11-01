@@ -24,13 +24,22 @@ function crise() {
   return k;
 }
 const U = { email: 'Teste.Adm@Gmail.com', uid: 'u1' };
-async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html', vistos, ua) {
+async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html', vistos, ua, google) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, ...(ua ? { userAgent: ua } : {}) });
   await ctx.addInitScript(([f, v]) => { window.__FB = f; if (v) localStorage.setItem('nit-movel-vistos', v); }, [F, vistos || null]);
   await ctx.route('**/*', r => {
     const u = new URL(r.request().url());
     if (u.hostname === 'www.gstatic.com') return r.fulfill({ contentType: 'text/javascript', body: /app-compat/.test(u.pathname) ? FAKE : '' });
-    if (u.hostname === 'nit.teste') { const f = path.join(REPO, path.basename(u.pathname)); return fs.existsSync(f) ? r.fulfill({ path: f }) : r.fulfill({ status: 200, body: `PAGINA ${u.pathname}${u.search}` }); }
+    if (u.hostname === 'nit.teste') { const f = path.join(REPO, path.basename(u.pathname));
+      if (!fs.existsSync(f)) return r.fulfill({ status: 200, body: `PAGINA ${u.pathname}${u.search}` });
+      // com google: preenche o ID do cliente (como ficará depois do Google Cloud)
+      if (google && /movel\.html$/.test(u.pathname)) return r.fulfill({ contentType: 'text/html', body: fs.readFileSync(f, 'utf8').replace(/window\.NIT_GOOGLE_CLIENT = [^\n]*/, "window.NIT_GOOGLE_CLIENT = 'teste.apps.googleusercontent.com';") });
+      return r.fulfill({ path: f }); }
+    // Google simulado: devolve ao endereço pedido com o comprovante (ou o erro) depois do #
+    if (google && u.hostname === 'accounts.google.com') { const q = u.searchParams; google.pedidos.push(Object.fromEntries(q));
+      const pl = Buffer.from(JSON.stringify({ email: google.email, nonce: google.nonceErrado ? 'outro' : q.get('nonce') })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const frag = google.erro ? `error=${google.erro}&state=${q.get('state')}` : `id_token=e30.${pl}.x&state=${q.get('state')}`;
+      return r.fulfill({ contentType: 'text/html', body: `<script>location.replace(${JSON.stringify(`${q.get('redirect_uri')}#${frag}`)})</script>` }); }
     return r.abort();
   });
   const p = await ctx.newPage(); const erros = []; p.on('pageerror', e => erros.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load/.test(m.text())) erros.push(m.text()); });
@@ -122,12 +131,12 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
       ck(!(await p.evaluate(() => window.__FB.redirects)), 'nenhum redirecionamento'),
       ck(!(await p.$eval('#m-btn-login', x => x.disabled)), 'botão Entrar liberado para tentar de novo'),
     ]); await ctx.close(); }
-  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/popup-blocked' } }, 'http://nit.teste/nit-homologacao/movel.html', null, AND);
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/popup-blocked' } }, undefined, null, AND);   // sem ID do cliente (produção hoje): janela
     await p.click('#m-btn-login'); await p.waitForTimeout(300);
     const href = await p.$eval('#m-abrir-chrome', x => x.getAttribute('href'));
     reg('E11', 'Android, janela bloqueada: botão "Abrir no Chrome" com o mesmo endereço', [
       ck(await vis(p, 'm-ajuda-android') && !(await vis(p, 'm-ajuda-ios')), 'instrução do Android'),
-      ck(href.startsWith('intent://nit.teste/nit-homologacao/movel.html#Intent;scheme=https;package=com.android.chrome;'), href),
+      ck(href.startsWith('intent://nit.teste/sistemaintegrado/movel.html#Intent;scheme=https;package=com.android.chrome;'), href),
     ]); await ctx.close(); }
   { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: 'trava' }, undefined, null, IOS);
     await p.evaluate(() => { NitMovel.S.demoraMs = 600; }); await p.click('#m-btn-login'); await p.waitForTimeout(250);
@@ -146,6 +155,58 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     await p.evaluate(() => { window.__FB.popup = null; }); await p.click('#m-btn-login'); await p.waitForTimeout(400);
     reg('E14', 'Tentou de novo e deu certo: a instrução some e a lista abre', [
       ck(!(await vis(p, 'm-ajuda')) && await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta, ajuda escondida'),
+    ]); await ctx.close(); }
+  { const g = { email: 'teste.adm@gmail.com', pedidos: [] };
+    const ctx = await b.newContext({ isMobile: true, userAgent: IOS });
+    await ctx.addInitScript(f => { window.__FB = f; }, { ...base, usuario: null });
+    await ctx.route('**/*', r => { const u = new URL(r.request().url());
+      if (u.hostname === 'www.gstatic.com') return r.fulfill({ contentType: 'text/javascript', body: /app-compat/.test(u.pathname) ? FAKE : '' });
+      if (u.hostname === 'nit.teste') return r.fulfill({ path: path.join(REPO, path.basename(u.pathname)) });
+      if (u.hostname === 'accounts.google.com') { g.pedidos.push(Object.fromEntries(u.searchParams)); return r.fulfill({ body: 'GOOGLE' }); }
+      return r.abort(); });
+    const p = await ctx.newPage(); await p.goto('http://nit.teste/nit-homologacao/movel.html'); await p.waitForTimeout(400);
+    await p.click('#m-btn-login'); await p.waitForTimeout(600);
+    reg('E20', 'Arquivo real: homologação já vai ao Google com o ID do cliente dela; produção (sem ID) continua na janela', [
+      ck(g.pedidos[0]?.client_id === '865942699083-attv4bvurge6i2efsiv8seat4sc8ri33.apps.googleusercontent.com' && !(await p.evaluate(() => window.__FB.janelas)), `client_id: ${g.pedidos[0]?.client_id}`),
+    ]); await ctx.close(); }
+  // ── Ir e voltar pela própria página (com o ID do cliente configurado)
+  { const g = { email: 'teste.adm@gmail.com', pedidos: [] };
+    const { p, ctx, erros } = await abrir(b, { ...base, usuario: null }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);
+    await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(800);
+    const ped = g.pedidos[0] || {};
+    reg('E15', 'iPhone, ir e voltar: Google devolve ao movel.html, sessão abre, lista aparece', [
+      ck(ped.response_type === 'id_token' && ped.redirect_uri === 'http://nit.teste/nit-homologacao/movel.html' && ped.client_id === 'teste.apps.googleusercontent.com', `pedido: ${JSON.stringify(ped).slice(0, 160)}`),
+      ck(await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta (ADM)'),
+      ck(!p.url().includes('#') && !p.url().includes('id_token'), `comprovante tirado do endereço: ${p.url()}`),
+      ck(!(await p.evaluate(() => window.__FB.janelas)), 'sem janela (pop-up)'),
+      ck(/sessão aberta/.test(await p.evaluate(() => localStorage.getItem('nit-movel-login-passo'))), `rastro: ${await p.evaluate(() => localStorage.getItem('nit-movel-login-passo'))}`),
+      ck(!erros.length, `erros: ${erros.join('; ') || 'nenhum'}`),
+    ]); await ctx.close(); }
+  { const g = { email: 'teste.adm@gmail.com', pedidos: [], nonceErrado: true };
+    const { p, ctx } = await abrir(b, { ...base, usuario: null }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);
+    await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(600);
+    const st = await p.$eval('#m-login-status', x => x.textContent);
+    reg('E16', 'Comprovante que não é deste pedido (nonce): recusa, diz o motivo, não abre sessão', [
+      ck(/nonce/.test(st) && !(await p.evaluate(() => window.__FB.creds)) && await p.$eval('#m-app', x => x.hidden), st),
+      ck(/não confere/.test(await p.$eval('#m-diag', x => x.textContent)), `rastro na tela: ${await p.$eval('#m-diag', x => x.textContent)}`),
+    ]); await ctx.close(); }
+  { const g = { email: 'teste.adm@gmail.com', pedidos: [], erro: 'access_denied' };
+    const { p, ctx } = await abrir(b, { ...base, usuario: null }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);
+    await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(600);
+    reg('E17', 'Cancelou no Google: "Login cancelado no Google." e o botão volta', [
+      ck(await p.$eval('#m-login-status', x => x.textContent) === 'Login cancelado no Google.' && !(await p.$eval('#m-btn-login', x => x.disabled)), await p.$eval('#m-login-status', x => x.textContent)),
+    ]); await ctx.close(); }
+  { const g = { email: 'estranho@gmail.com', pedidos: [] };
+    const { p, ctx } = await abrir(b, { ...base, usuario: null }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);
+    await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(800);
+    reg('E18', 'Conta Google fora da lista: entra no Google, mas o NIT recusa como sempre', [
+      ck(/não autorizado/i.test(await p.$eval('#m-login-status', x => x.textContent)) && await p.$eval('#m-app', x => x.hidden), await p.$eval('#m-login-status', x => x.textContent)),
+    ]); await ctx.close(); }
+  { const g = { email: 'teste.adm@gmail.com', pedidos: [] };
+    const { p, ctx } = await abrir(b, { ...base, usuario: null, credErro: 'auth/invalid-credential' }, 'http://nit.teste/nit-homologacao/movel.html', null, IOS, g);
+    await p.click('#m-btn-login'); await p.waitForURL(/movel\.html/); await p.waitForTimeout(600);
+    reg('E19', 'Firebase recusa o comprovante: motivo com código na tela', [
+      ck(/auth\/invalid-credential/.test(await p.$eval('#m-login-status', x => x.textContent)), await p.$eval('#m-login-status', x => x.textContent)),
     ]); await ctx.close(); }
   await b.close();
   const f = R.filter(x => x !== 'PASSOU').length; console.log('RESUMO movel-tela', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });

@@ -114,7 +114,40 @@
         return `${m[code] || 'Não foi possível entrar.'} (${code || 'sem código'})`;
     }
 
-    const Puro = { GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
+    // ── Login "ir e voltar" pela própria página (01/11): o Google devolve o comprovante (id_token) para o movel.html
+    // no github.io, e o Firebase abre a sessão com ele (signInWithCredential). Não passa pelo firebaseapp.com, que o
+    // iPhone bloqueia. Precisa do "ID do cliente da Web" do projeto e do endereço autorizado no Google Cloud.
+    function urlGoogle(clientId, redirectUri, nonce, state) {
+        const q = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'id_token',
+            scope: 'openid email profile', nonce, state, prompt: 'select_account' });
+        return `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
+    }
+    // lê o que o Google devolveu depois do # (id_token ou erro); nada → null
+    function lerRetorno(hash) {
+        const h = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+        if (!h.has('id_token') && !h.has('error')) return null;
+        return { idToken: h.get('id_token') || '', state: h.get('state') || '', erro: h.get('error') || '' };
+    }
+    function payloadJwt(t) {
+        try {
+            const b = String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            const txt = typeof atob === 'function' ? atob(b + '==='.slice((b.length + 3) % 4)) : Buffer.from(b, 'base64').toString('binary');
+            return JSON.parse(decodeURIComponent(escape(txt)));
+        } catch (e) { return null; }
+    }
+    // confere o retorno contra o que foi guardado na ida (state, nonce, validade de 10 min)
+    function conferirRetorno(r, guardado, agora) {
+        if (!r) return { ok: false, motivo: 'sem retorno' };
+        if (r.erro) return { ok: false, motivo: r.erro === 'access_denied' ? 'Login cancelado no Google.' : `O Google recusou (${r.erro}).` };
+        if (!guardado || !guardado.state) return { ok: false, motivo: 'Retorno do Google sem pedido neste aparelho. Toque em Entrar de novo.' };
+        if (r.state !== guardado.state) return { ok: false, motivo: 'Retorno do Google não confere (state). Toque em Entrar de novo.' };
+        if (agora - (guardado.ts || 0) > 10 * 60000) return { ok: false, motivo: 'O login demorou demais. Toque em Entrar de novo.' };
+        const p = payloadJwt(r.idToken);
+        if (!p || p.nonce !== guardado.nonce) return { ok: false, motivo: 'Comprovante do Google não confere (nonce). Toque em Entrar de novo.' };
+        return { ok: true, email: p.email || '' };
+    }
+
+    const Puro = { urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
     if (typeof module !== 'undefined' && module.exports) { module.exports = Puro; return; }
 
     // ── Página ──────────────────────────────────────────────────────────
@@ -154,16 +187,58 @@
         setTimeout(() => { b.textContent = '📋 Copiar link'; }, 3000);
     }
 
+    // rastro do login, guardado no aparelho: aparece na tela mesmo depois de ir ao Google e voltar
+    const CH_PASSO = 'nit-movel-login-passo', CH_OIDC = 'nit-movel-oidc';
+    function passo(txt) {
+        const v = `${hhmm(Date.now())} ${txt}`; ls.set(CH_PASSO, v);
+        const el = $('m-diag'); if (el) el.textContent = `${window.NIT_MOVEL_VERSAO || ''} · ${v}`;
+    }
+    const aleatorio = () => { const a = new Uint8Array(16); crypto.getRandomValues(a); return [...a].map(x => x.toString(16).padStart(2, '0')).join(''); };
+    const clienteGoogle = () => (window.NIT_GOOGLE_CLIENT || '').trim();
+    const voltaPara = () => location.origin + location.pathname;
+
+    function irAoGoogle() {
+        const g = { nonce: aleatorio(), state: aleatorio(), ts: Date.now() };
+        ls.set(CH_OIDC, JSON.stringify(g));
+        passo('indo ao Google');
+        $('m-btn-login').disabled = true; tela('m-login', 'Abrindo o Google...');
+        location.assign(urlGoogle(clienteGoogle(), voltaPara(), g.nonce, g.state));
+    }
+
+    // voltou do Google? confere e entrega ao Firebase. true = havia retorno (tratado aqui)
+    async function tratarRetorno() {
+        const r = lerRetorno(location.hash); if (!r) return false;
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* segue */ }   // tira o comprovante do endereço
+        let g = null; try { g = JSON.parse(ls.get(CH_OIDC) || 'null'); } catch (e) { g = null; }
+        ls.set(CH_OIDC, '');
+        const c = conferirRetorno(r, g, Date.now());
+        if (!c.ok) { passo(`voltou: ${c.motivo}`); tela('m-login', c.motivo); $('m-btn-login').disabled = false; return true; }
+        passo('voltou do Google; abrindo sessão');
+        tela('m-login', 'Entrando...');
+        try {
+            await firebase.auth().signInWithCredential(firebase.auth.GoogleAuthProvider.credential(r.idToken));
+            passo('sessão aberta');
+        } catch (e) {
+            console.error('[NitMovel] credencial:', e && e.code, e);
+            passo(`erro ${e && e.code}`);
+            tela('m-login', motivo(e && e.code)); $('m-btn-login').disabled = false;
+        }
+        return true;
+    }
+
     let _demora = null;
     async function entrar() {
+        if (clienteGoogle()) { irAoGoogle(); return; }   // configurado: ir e voltar pela própria página
+        passo('janela do Google');
         const p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
         $('m-btn-login').disabled = true; tela('m-login', 'Abrindo o Google...'); ajuda(false);
         clearTimeout(_demora);   // janela que nunca responde (alguns navegadores internos): mostra a saída sem cancelar
         _demora = setTimeout(() => { $('m-login-status').textContent = 'O Google está demorando. Se nada abriu, use o navegador:'; ajuda(true); $('m-btn-login').disabled = false; }, S.demoraMs);
-        try { await firebase.auth().signInWithPopup(p); clearTimeout(_demora); }
+        try { await firebase.auth().signInWithPopup(p); clearTimeout(_demora); passo('janela: sessão aberta'); }
         catch (e) {
             clearTimeout(_demora);
             console.error('[NitMovel] login:', e && e.code, e);
+            passo(`janela: erro ${e && e.code}`);
             tela('m-login', motivo(e && e.code));
             if (e && e.code !== 'auth/network-request-failed' && e.code !== 'auth/unauthorized-domain') ajuda(true);
             $('m-btn-login').disabled = false;
@@ -281,7 +356,14 @@
         $('m-computador').addEventListener('click', e => { e.preventDefault(); location.href = 'index.html?versao=computador'; });
         $('m-sair').addEventListener('click', () => firebase.auth().signOut().then(() => location.reload()));
         $('m-copiar').addEventListener('click', copiarLink);
-        firebase.auth().onAuthStateChanged(u => { if (u) verificar(u); else { tela('m-login', ''); $('m-btn-login').disabled = false; } });
+        const ult = ls.get(CH_PASSO); if ($('m-diag')) $('m-diag').textContent = `${window.NIT_MOVEL_VERSAO || ''}${ult ? ' · ' + ult : ''}`;
+        let retorno = false;
+        const pronto = tratarRetorno().then(v => { retorno = v; }).catch(() => {});
+        firebase.auth().onAuthStateChanged(async u => {
+            await pronto;
+            if (u) verificar(u);
+            else if (!retorno) { tela('m-login', ''); $('m-btn-login').disabled = false; }
+        });
     });
     raiz.NitMovel = { S, render, Puro };
 })(typeof window !== 'undefined' ? window : globalThis);

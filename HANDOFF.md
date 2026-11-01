@@ -116,6 +116,8 @@ Documentos citados em conversas anteriores **que não existem no repositório**:
 - 31/10 23:26 — homologação (movelhomolog3), iPhone pelo link do WhatsApp: "Entrar com Google" ia e voltava para a tela de login. Causa: o plano B por redirecionamento (problema documentado do Firebase em Safari 16.1+/Chrome 115+ fora do firebaseapp.com). Pesquisa em 2 rodadas (Firebase, issue #6716, Google OAuth em webviews, inapp-spy, intent://, x-safari-https instável).
 - 01/11 00:54 — decisão do Cristiano: nada "por cima" (sem senha nova). Mesmo login do Google, só pela janela, com motivo do erro na tela e a saída para o navegador. Teste decisivo pendente: abrir no Safari e entrar. Se falhar, avaliar o "ir e voltar" pelo próprio github.io (Cloud).
 - Feito (movelhomolog4): `bateria-movel.js` 11/11, `movel-tela/rodar.js` 14/14 (datas agora relativas a hoje; antes o teste envelhecia na virada do dia).
+- 01/11 01:33–01:47 — movelhomolog4 (conferido no repositório: commit 1975dc5, arquivos iguais ao pacote) também volta à tela de login no Safari do iPhone. A janela (pop-up) depende do mesmo armazenamento do firebaseapp.com.
+- Feito no laboratório (movelhomolog5): "ir e voltar" pela própria página (OIDC `id_token` + `signInWithCredential`), rastro do login na tela. `bateria-movel.js` 13/13, `movel-tela/rodar.js` 19/19 (Google simulado: volta certa, nonce errado, cancelado, conta fora da lista, Firebase recusa). Aguardando do Cristiano: ID do cliente da Web (homologação) + 2 linhas no Google Cloud.
 - O `supervisor.html` antigo do `sistemaintegrado` (lê `ocorrencias`, sem regra) não é usado pelo móvel.
 
 ## 31/10/2026 — virada da meia-noite observada na homologação + 14.2

@@ -1180,7 +1180,9 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - Falhou: a tela diz o motivo e o código (nenhum erro mudo) e mostra a saída: iPhone "⬆︎ → Abrir no Safari"; Android botão "Abrir no Chrome" (`intent://`); os dois com "Copiar link". Sem internet: só diz isso.
   - Janela que não responde em 20 s: mostra a saída sem cancelar a tentativa.
   - Orientação aos ADMs: abrir uma vez no Safari/Chrome e salvar na tela de início.
-  - Se a janela falhar até no Safari: avaliar o login "ir e voltar" pelo próprio github.io (precisa de 2 linhas no Google Cloud), decidido pelo Cristiano.
+  - **01/11: a janela também falhou no Safari do iPhone** (movelhomolog4, versão conferida no repositório). Adotado o "ir e voltar" pela própria página: o Google devolve o comprovante (`id_token`, fluxo implícito do OpenID Connect) ao próprio `movel.html`; o NIT confere `state` e `nonce` (validade 10 min), tira o comprovante do endereço e abre a sessão no Firebase com `signInWithCredential`. Mesmo login do Google, mesma lista, mesmas regras. Não passa pelo `firebaseapp.com`.
+  - Precisa de: "ID do cliente da Web" de cada projeto em `NIT_GOOGLE_CLIENT` (movel.html) e, no Google Cloud, a origem `https://crisstiano07.github.io` e o endereço de volta do `movel.html` autorizados. Vazio = janela do Google (como antes).
+  - Rastro do login na tela de entrar (versão + último passo, guardado no aparelho) para diagnóstico por print.
 - **Não grava nada no banco.** Lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
 - **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.
 - **Fica para depois:** copiar status para o grupo (restrito); despacho de equipe pelo supervisor (fase 2); perfil por usuário.

@@ -33,7 +33,15 @@
     signInWithRedirect() { F.redirects = (F.redirects || 0) + 1; return Promise.resolve(); },
     getRedirectResult() { return Promise.resolve(null); },
     signOut() { F.usuario = null; return Promise.resolve(); },
+    signInWithCredential(c) { return window.__FBcred(c); },
   });
   auth.GoogleAuthProvider = function () { this.setCustomParameters = () => {}; };
+  auth.GoogleAuthProvider.credential = t => ({ idToken: t });
+  // Firebase falso: aceita o comprovante se o e-mail estiver legível (o real confere assinatura e destinatário)
+  const _auth = auth;
+  window.__FBcred = c => { F.creds = (F.creds || 0) + 1;
+    if (F.credErro) return Promise.reject(Object.assign(new Error(F.credErro), { code: F.credErro }));
+    const p = JSON.parse(atob(c.idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    F.usuario = { email: p.email }; authObs.forEach(cb => cb(F.usuario)); return Promise.resolve(); };
   window.firebase = { apps: [], initializeApp(c) { this.apps.push(c); F.cfg = c; }, auth, database: () => ({ ref }) };
 })();
