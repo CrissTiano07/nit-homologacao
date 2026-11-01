@@ -87,7 +87,34 @@
     // marca "novo": o par (card, grupo) não estava na última visita
     function marcaVista(c, gid) { return `${c.eventoId}@${gid}`; }
 
-    const Puro = { GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm };
+    // ── Login (01/11): só pela janela do Google, igual ao computador. O "ir e voltar" (redirect) não funciona
+    // no github.io com iPhone/Chrome novos (o navegador bloqueia o armazenamento do firebaseapp.com) e causava o vai e volta.
+    function plataforma(ua, toques) {
+        ua = String(ua || '');
+        if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && toques > 1)) return 'ios';
+        return /Android/.test(ua) ? 'android' : 'outro';
+    }
+    // Android: abre o mesmo endereço no Chrome; sem Chrome, o próprio aparelho abre o endereço normal
+    function linkChrome(href) {
+        const u = new URL(href);
+        return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
+    }
+    // motivo em português; nenhum erro mudo (o código vai junto para diagnóstico)
+    function motivo(code) {
+        const m = {
+            'auth/popup-closed-by-user': 'A janela do Google foi fechada antes de terminar.',
+            'auth/cancelled-popup-request': 'A janela do Google foi fechada antes de terminar.',
+            'auth/popup-blocked': 'Este navegador bloqueou a janela do Google.',
+            'auth/operation-not-supported-in-this-environment': 'Este navegador não permite entrar com o Google.',
+            'auth/web-storage-unsupported': 'Este navegador não permite entrar com o Google.',
+            'auth/network-request-failed': 'Sem internet. Confira a conexão e tente de novo.',
+            'auth/unauthorized-domain': 'Endereço não autorizado no Firebase. Avise o administrador.',
+            'auth/internal-error': 'O Google não respondeu como esperado.',
+        };
+        return `${m[code] || 'Não foi possível entrar.'} (${code || 'sem código'})`;
+    }
+
+    const Puro = { GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
     if (typeof module !== 'undefined' && module.exports) { module.exports = Puro; return; }
 
     // ── Página ──────────────────────────────────────────────────────────
@@ -100,24 +127,45 @@
     const S = {
         db: null, dia: hoje(), kanban: {}, ref: null, filtro: ls.get(CH_FILTRO) || 'espera', q: '',
         vistos: new Set(JSON.parse(ls.get(CH_VISTOS) || '[]')), atuais: new Set(),
-        online: true, ultimo: null, carregado: false,
+        online: true, ultimo: null, carregado: false, demoraMs: 20000,
     };
 
     function tela(qual, msg) {
         ['m-login', 'm-app'].forEach(id => { $(id).hidden = id !== qual; });
         if (msg != null) $('m-login-status').textContent = msg;
+        if (qual !== 'm-login') ajuda(false);
     }
 
+    // instrução para sair do navegador interno (WhatsApp, Instagram...) quando a janela do Google não funciona
+    function ajuda(mostrar) {
+        const box = $('m-ajuda'); if (!box) return;
+        box.hidden = !mostrar; if (!mostrar) return;
+        const pl = plataforma(navigator.userAgent, navigator.maxTouchPoints || 0);
+        $('m-ajuda-ios').hidden = pl !== 'ios';
+        $('m-ajuda-android').hidden = pl !== 'android';
+        $('m-ajuda-outro').hidden = pl !== 'outro';
+        if (pl === 'android') $('m-abrir-chrome').href = linkChrome(location.href);
+    }
+
+    async function copiarLink() {
+        const url = location.href.split('#')[0], b = $('m-copiar');
+        try { await navigator.clipboard.writeText(url); b.textContent = '✓ Link copiado'; }
+        catch (e) { window.prompt('Copie o link:', url); }   // sem permissão de copiar: mostra para copiar à mão
+        setTimeout(() => { b.textContent = '📋 Copiar link'; }, 3000);
+    }
+
+    let _demora = null;
     async function entrar() {
         const p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
-        $('m-btn-login').disabled = true; tela('m-login', 'Abrindo o Google...');
-        try { await firebase.auth().signInWithPopup(p); }
+        $('m-btn-login').disabled = true; tela('m-login', 'Abrindo o Google...'); ajuda(false);
+        clearTimeout(_demora);   // janela que nunca responde (alguns navegadores internos): mostra a saída sem cancelar
+        _demora = setTimeout(() => { $('m-login-status').textContent = 'O Google está demorando. Se nada abriu, use o navegador:'; ajuda(true); $('m-btn-login').disabled = false; }, S.demoraMs);
+        try { await firebase.auth().signInWithPopup(p); clearTimeout(_demora); }
         catch (e) {
-            // celular: pop-up bloqueado ou não suportado (navegador do WhatsApp, iPhone) → sai e volta pelo Google
-            if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(e.code)) {
-                try { await firebase.auth().signInWithRedirect(p); return; } catch (e2) { e = e2; }
-            }
-            tela('m-login', e.code === 'auth/popup-closed-by-user' ? 'Login cancelado.' : 'Não foi possível entrar. Tente de novo.');
+            clearTimeout(_demora);
+            console.error('[NitMovel] login:', e && e.code, e);
+            tela('m-login', motivo(e && e.code));
+            if (e && e.code !== 'auth/network-request-failed' && e.code !== 'auth/unauthorized-domain') ajuda(true);
             $('m-btn-login').disabled = false;
         }
     }
@@ -232,7 +280,7 @@
         $('m-busca').addEventListener('input', e => { S.q = e.target.value; render(); });
         $('m-computador').addEventListener('click', e => { e.preventDefault(); location.href = 'index.html?versao=computador'; });
         $('m-sair').addEventListener('click', () => firebase.auth().signOut().then(() => location.reload()));
-        firebase.auth().getRedirectResult().catch(() => { /* erro do retorno do Google: o botão continua disponível */ });
+        $('m-copiar').addEventListener('click', copiarLink);
         firebase.auth().onAuthStateChanged(u => { if (u) verificar(u); else { tela('m-login', ''); $('m-btn-login').disabled = false; } });
     });
     raiz.NitMovel = { S, render, Puro };

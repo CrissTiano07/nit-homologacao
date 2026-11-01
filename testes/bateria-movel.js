@@ -53,6 +53,20 @@ reg('MV7', 'Chave do e-mail igual à do NIT (nit_admins / usuarios_autorizados)'
 reg('MV8', '"novo" é por card E grupo: mudar de coluna conta como novidade', [
   ck(M.marcaVista({ eventoId: 'x' }, 'espera') !== M.marcaVista({ eventoId: 'x' }, 'vl'), 'x@espera ≠ x@vl'),
 ]);
+const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15';
+const AND = 'Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+reg('MV9', 'Plataforma para a instrução certa (iPhone, iPad, Android, computador)', [
+  ck(M.plataforma(IOS, 5) === 'ios' && M.plataforma(IPAD, 5) === 'ios' && M.plataforma(IPAD, 0) === 'outro' && M.plataforma(AND, 5) === 'android' && M.plataforma('', 0) === 'outro', 'ios / ipad / mac / android / vazio'),
+]);
+const lc = M.linkChrome('https://crisstiano07.github.io/nit-homologacao/movel.html?x=1#y');
+reg('MV10', 'Android: link que abre o mesmo endereço no Chrome, com volta ao endereço normal sem Chrome', [
+  ck(lc.startsWith('intent://crisstiano07.github.io/nit-homologacao/movel.html?x=1#Intent;scheme=https;package=com.android.chrome;') && lc.includes('S.browser_fallback_url=https%3A%2F%2Fcrisstiano07.github.io%2Fnit-homologacao%2Fmovel.html%3Fx%3D1%23y') && lc.endsWith(';end'), lc),
+]);
+reg('MV11', 'Erro de login sempre com motivo e código (nenhum erro mudo)', [
+  ck(M.motivo('auth/popup-blocked') === 'Este navegador bloqueou a janela do Google. (auth/popup-blocked)', M.motivo('auth/popup-blocked')),
+  ck(M.motivo('auth/xyz') === 'Não foi possível entrar. (auth/xyz)' && M.motivo(undefined) === 'Não foi possível entrar. (sem código)', `${M.motivo('auth/xyz')} | ${M.motivo(undefined)}`),
+]);
 const f = R.filter(x => x !== 'PASSOU').length;
 console.log('RESUMO movel', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
 process.exit(f ? 1 : 0);

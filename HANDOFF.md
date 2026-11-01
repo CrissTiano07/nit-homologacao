@@ -113,6 +113,9 @@ Documentos citados em conversas anteriores **que não existem no repositório**:
 - Testes: `bateria-movel.js` 8/8, `bateria-movel-desvio.js` 4/4, `movel-tela/rodar.js` 9/9 (navegador real, Firebase falso); admin 6, planilha 17, barra lateral 5, virada 5, causa 3, 24-10 4: tudo passou.
 - A testar na homologação, nos celulares reais: login por pop-up no Android, iPhone e navegador interno do WhatsApp (se o pop-up falhar, o `movel.html` tenta o login por redirecionamento).
 - 31/10 23:00 — pedido: LIMPAR PAINEL com segurança contra acidente. Feito no laboratório: confirmação digitando LIMPAR (BR-ADM-001), genérica no `nitConfirm` (`rotulos.digitar`). ↩ RESTAURAR também pede a palavra RESTAURAR (decisão do Cristiano, 23:10: "e se clicar acidentalmente em RESTAURAR? O painel é prejudicado"). `bateria-admin.js` 10/10 (AD6 e AD9 travas, AD7 e AD8 a trava não vaza para outras perguntas).
+- 31/10 23:26 — homologação (movelhomolog3), iPhone pelo link do WhatsApp: "Entrar com Google" ia e voltava para a tela de login. Causa: o plano B por redirecionamento (problema documentado do Firebase em Safari 16.1+/Chrome 115+ fora do firebaseapp.com). Pesquisa em 2 rodadas (Firebase, issue #6716, Google OAuth em webviews, inapp-spy, intent://, x-safari-https instável).
+- 01/11 00:54 — decisão do Cristiano: nada "por cima" (sem senha nova). Mesmo login do Google, só pela janela, com motivo do erro na tela e a saída para o navegador. Teste decisivo pendente: abrir no Safari e entrar. Se falhar, avaliar o "ir e voltar" pelo próprio github.io (Cloud).
+- Feito (movelhomolog4): `bateria-movel.js` 11/11, `movel-tela/rodar.js` 14/14 (datas agora relativas a hoje; antes o teste envelhecia na virada do dia).
 - O `supervisor.html` antigo do `sistemaintegrado` (lê `ocorrencias`, sem regra) não é usado pelo móvel.
 
 ## 31/10/2026 — virada da meia-noite observada na homologação + 14.2

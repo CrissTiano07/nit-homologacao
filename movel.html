@@ -41,6 +41,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 #m-login p{color:var(--tx2);font-size:14px;min-height:20px}
 #m-btn-login{background:#fff;color:#111;border:0;border-radius:24px;padding:13px 22px;font-weight:700;font-size:15px}
 #m-btn-login:disabled{opacity:.5}
+#m-ajuda{display:grid;gap:12px;justify-items:center;max-width:340px;margin:0 auto;padding:16px;border:1px solid var(--b1);border-radius:12px;background:var(--s1);font-size:14px;line-height:1.5}
+#m-ajuda p{color:var(--tx1);min-height:0}
+#m-ajuda .m-dica{color:var(--tx2);font-size:12px}
+.m-btn2{display:inline-block;margin-top:8px;background:var(--s2);color:var(--tx1);border:1px solid var(--b1);border-radius:20px;padding:10px 18px;font-weight:700;text-decoration:none}
 /* topo */
 header{position:sticky;top:0;z-index:3;background:var(--s0);padding:12px 16px 0;border-bottom:1px solid var(--b1)}
 .m-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
@@ -86,6 +90,13 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <h1>🚦 NIT · SEMÁFOROS</h1>
     <button id="m-btn-login" type="button">Entrar com Google</button>
     <p id="m-login-status"></p>
+    <div id="m-ajuda" hidden>
+        <p id="m-ajuda-ios">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br>Toque em <b>⬆︎</b> (compartilhar) → <b>Abrir no Safari</b> e entre por lá.</p>
+        <p id="m-ajuda-android">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br><a id="m-abrir-chrome" class="m-btn2" href="#">Abrir no Chrome</a></p>
+        <p id="m-ajuda-outro">Abra este endereço no Chrome ou no Safari e entre por lá.</p>
+        <button id="m-copiar" class="m-btn2" type="button">📋 Copiar link</button>
+        <p class="m-dica">Depois de entrar, salve na tela de início: assim não precisa mais do link.</p>
+    </div>
 </section>
 
 <section id="m-app" hidden>
@@ -98,7 +109,7 @@ footer a,footer button{color:var(--tx2);background:none;border:0;text-decoration
     <main id="m-lista"><p class="m-vazio">Carregando...</p></main>
     <footer><a id="m-computador" href="index.html?versao=computador">Abrir versão computador</a><button id="m-sair" type="button">Sair</button></footer>
 </section>
-<script defer src="movel.js?v=movelhomolog3"></script>
+<script defer src="movel.js?v=movelhomolog4"></script>
 <script>
     // cabeçalho do grupo gruda logo abaixo do topo (a altura do topo muda com a fonte do aparelho)
     window.addEventListener('DOMContentLoaded', () => {

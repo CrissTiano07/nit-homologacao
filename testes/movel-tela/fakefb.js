@@ -24,8 +24,13 @@
   const authObs = [];
   const auth = () => ({
     onAuthStateChanged(cb) { authObs.push(cb); setTimeout(() => cb(F.usuario), 20); },
-    signInWithPopup() { F.usuario = F.proximo; authObs.forEach(cb => cb(F.usuario)); return Promise.resolve(); },
-    signInWithRedirect() { return Promise.resolve(); },
+    signInWithPopup() {
+      F.janelas = (F.janelas || 0) + 1;
+      if (F.popup === 'trava') return new Promise(() => {});
+      if (F.popup && F.popup.erro) return Promise.reject(Object.assign(new Error(F.popup.erro), { code: F.popup.erro }));
+      F.usuario = F.proximo; authObs.forEach(cb => cb(F.usuario)); return Promise.resolve();
+    },
+    signInWithRedirect() { F.redirects = (F.redirects || 0) + 1; return Promise.resolve(); },
     getRedirectResult() { return Promise.resolve(null); },
     signOut() { F.usuario = null; return Promise.resolve(); },
   });

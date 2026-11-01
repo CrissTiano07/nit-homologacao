@@ -1176,6 +1176,11 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - Busca por código, cruzamento, causa e equipe; filtros com contagem; cabeçalho do grupo preso no topo.
   - "novo": card que entrou ou mudou de coluna desde a última visita naquele aparelho. Na primeira visita, nada é novo.
   - Linha de estado: hora do último processamento e origem; "SEM INTERNET" só se durar 5 s.
+- **Login (01/11/2026):** o mesmo login do Google do NIT, **só pela janela** (igual ao computador). Sem "ir e voltar" (redirect): no github.io o iPhone e o Chrome novo bloqueiam o armazenamento do `firebaseapp.com`, e o login voltava sem sessão (visto no navegador do WhatsApp, iPhone, 31/10 23:26).
+  - Falhou: a tela diz o motivo e o código (nenhum erro mudo) e mostra a saída: iPhone "⬆︎ → Abrir no Safari"; Android botão "Abrir no Chrome" (`intent://`); os dois com "Copiar link". Sem internet: só diz isso.
+  - Janela que não responde em 20 s: mostra a saída sem cancelar a tentativa.
+  - Orientação aos ADMs: abrir uma vez no Safari/Chrome e salvar na tela de início.
+  - Se a janela falhar até no Safari: avaliar o login "ir e voltar" pelo próprio github.io (precisa de 2 linhas no Google Cloud), decidido pelo Cristiano.
 - **Não grava nada no banco.** Lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
 - **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.
 - **Fica para depois:** copiar status para o grupo (restrito); despacho de equipe pelo supervisor (fase 2); perfil por usuário.

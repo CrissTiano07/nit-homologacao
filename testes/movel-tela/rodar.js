@@ -3,27 +3,29 @@ const fs = require('fs'), path = require('path');
 const REPO = process.argv[3], FAKE = fs.readFileSync(path.join(__dirname, 'fakefb.js'), 'utf8');
 const R = []; const ck = (ok, d) => ({ ok: !!ok, d });
 function reg(id, nome, cs) { const s = cs.every(c => c.ok) ? 'PASSOU' : 'FALHOU'; R.push(s); console.log(`${s.padEnd(7)} ${id} ${nome}`); cs.forEach(c => console.log(`   ${c.ok ? '✓' : '✗'} ${c.d}`)); }
-const DIA = '31/10/2026';
+// datas relativas a hoje (o teste não pode envelhecer)
+const fmt = ms => { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return { dia: `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()}`, hm: `${z(d.getHours())}:${z(d.getMinutes())}` }; };
+const DIA = fmt(Date.now()).dia, ONTEM = fmt(Date.now() - 86400000).dia;
+const ini = minAtras => { const f = fmt(Date.now() - minAtras * 60000); return `${f.dia} ${f.hm}`; };
 const ruas = ['AV. BEZERRA DE MENEZES × R. DIAS DA ROCHA', 'AV. AGUANAMBI × R. VISCONDE DO RIO BRANCO', 'AV. DOMINGOS OLÍMPIO × R. OTOKAR DOLEJSCHI', 'AV. SANTOS DUMONT × AV. BARÃO DE STUDART', 'R. MONSENHOR TABOSA × R. JOAQUIM NABUCO', 'AV. WASHINGTON SOARES × R. CORONEL JUCÁ', 'AV. DOM LUÍS × R. CEL. JUCÁ', 'AV. GODOFREDO MACIEL × R. ANTÔNIO BANDEIRA'];
 const causas = ['ENEL', 'FURTO', 'FALHA DE EQUIPAMENTO', 'ENEL', 'ROMPIMENTO', 'ABALROAMENTO'];
 function crise() {
   const k = {}; let n = 0;
   const add = (col, qtd, extra = () => ({})) => { for (let i = 0; i < qtd; i++, n++) {
-    const min = 30 + n * 13, hh = Math.max(0, 11 - Math.floor(min / 60)), mm = 59 - (min % 60);
     const cod = String(100 + n * 17 % 900);
-    k[`${cod}_${n}`] = { codigo: cod, coluna: col, dataReferencia: DIA, inicio: `${DIA} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, endereco: ruas[n % 8], problema: n % 3 ? 'APAGADO' : 'PISCANTE', tipo: causas[n % 6], ...extra(i) };
+    k[`${cod}_${n}`] = { codigo: cod, coluna: col, dataReferencia: DIA, inicio: ini(360 - n * 8), endereco: ruas[n % 8], problema: n % 3 ? 'APAGADO' : 'PISCANTE', tipo: causas[n % 6], ...extra(i) };
   } };
   add('coluna-espera', 18);
   add('coluna-vl', 6, i => ({ equipe: ['FREITAS', 'MOURA', 'SILVA'][i % 3], viatura: `0${i + 1}`, tsDespacho: Date.now() - (20 + i * 15) * 60000 }));
   add('coluna-amc', 5, i => ({ equipe: ['LIMA', 'COSTA'][i % 2], viatura: `VT 1${i}` }));
   add('coluna-sem-necessidade', 4);
-  add('coluna-normalizados', 9, i => ({ data_fim: DIA, hora_fim: `${String(8 + i).padStart(2, '0')}:1${i}` }));
-  k['999_ontem'] = { codigo: '999', coluna: 'coluna-espera', dataReferencia: '30/10/2026', inicio: '30/10/2026 10:00', endereco: 'ONTEM' };
+  add('coluna-normalizados', 9, i => { const f = fmt(Date.now() - (100 - i * 10) * 60000); return { data_fim: f.dia, hora_fim: f.hm }; });
+  k['999_ontem'] = { codigo: '999', coluna: 'coluna-espera', dataReferencia: ONTEM, inicio: `${ONTEM} 10:00`, endereco: 'ONTEM' };
   return k;
 }
 const U = { email: 'Teste.Adm@Gmail.com', uid: 'u1' };
-async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html', vistos) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html', vistos, ua) {
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, ...(ua ? { userAgent: ua } : {}) });
   await ctx.addInitScript(([f, v]) => { window.__FB = f; if (v) localStorage.setItem('nit-movel-vistos', v); }, [F, vistos || null]);
   await ctx.route('**/*', r => {
     const u = new URL(r.request().url());
@@ -66,7 +68,7 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     ]);
     // ao vivo: um card novo chega
     await p.click('.m-chip >> text=Aguardando');
-    await p.evaluate(() => { window.__FB.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-espera', dataReferencia: '31/10/2026', inicio: '31/10/2026 11:58', endereco: 'AV. NOVA', problema: 'APAGADO', tipo: 'ENEL' }; window.__FBemitir(); });
+    await p.evaluate(([dia, inicio]) => { window.__FB.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-espera', dataReferencia: dia, inicio, endereco: 'AV. NOVA', problema: 'APAGADO', tipo: 'ENEL' }; window.__FBemitir(); }, [DIA, ini(2)]);
     await p.waitForTimeout(150);
     const ult = await p.$$eval('.m-r', xs => xs.map(x => x.querySelector('.m-av').textContent + (x.querySelector('.m-novo') ? '*' : '')));
     reg('E3', '1ª visita no aparelho: card que chega ao vivo aparece, sem "novo"', [ck(ult.length === 19 && ult.includes('777'), `${ult.length} linhas; 777 = ${ult.find(x => x.startsWith('777'))}`)]);
@@ -74,8 +76,8 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
     await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
     const vistos = await p.evaluate(() => localStorage.getItem('nit-movel-vistos'));
     await ctx.close();
-    const F2 = JSON.parse(JSON.stringify({ ...base, usuario: U })); F2.estado.kanban = crise(); F2.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-vl', dataReferencia: DIA, inicio: `${DIA} 11:58`, endereco: 'AV. NOVA', equipe: 'SILVA', viatura: '09' };
-    F2.estado.kanban['888_n'] = { codigo: '888', coluna: 'coluna-espera', dataReferencia: DIA, inicio: `${DIA} 12:01`, endereco: 'AV. OUTRA', problema: 'PISCANTE', tipo: 'FURTO' };
+    const F2 = JSON.parse(JSON.stringify({ ...base, usuario: U })); F2.estado.kanban = crise(); F2.estado.kanban['777_n'] = { codigo: '777', coluna: 'coluna-vl', dataReferencia: DIA, inicio: ini(2), endereco: 'AV. NOVA', equipe: 'SILVA', viatura: '09' };
+    F2.estado.kanban['888_n'] = { codigo: '888', coluna: 'coluna-espera', dataReferencia: DIA, inicio: ini(1), endereco: 'AV. OUTRA', problema: 'PISCANTE', tipo: 'FURTO' };
     const s2 = await abrir(b, F2, undefined, vistos);
     const novos = await s2.p.$$eval('.m-r', xs => xs.filter(x => x.querySelector('.m-novo')).map(x => x.querySelector('.m-av').textContent));
     const pontos = await s2.p.$$eval('.m-chip', xs => xs.filter(x => x.querySelector('.m-chip-novo')).map(x => x.firstChild.textContent));
@@ -106,6 +108,45 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
   { const { p, ctx } = await abrir(b, { ...base, usuario: U }, 'http://nit.teste/nit-homologacao/movel.html');
     reg('E9', 'Endereço de homologação usa o banco nit-homologacao e mostra a marca', [ck((await p.evaluate(() => window.__FB.cfg.databaseURL)).includes('homologacao'), 'banco nit-homologacao'), ck(await p.$eval('body', x => x.classList.contains('m-homolog')), 'marca HOMOLOG')]);
     await p.screenshot({ path: path.join(__dirname, 'movel-homolog.png') }); await ctx.close(); }
+  // ── Login só pela janela (01/11): falhas mostram motivo e a saída para o navegador; nunca "vai e volta"
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+  const AND = 'Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+  const vis = (p, id) => p.$eval('#' + id, x => !x.hidden && !x.closest('[hidden]'));
+  { const { p, ctx, erros } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/operation-not-supported-in-this-environment' } }, undefined, null, IOS);
+    await p.click('#m-btn-login'); await p.waitForTimeout(300);
+    const st = await p.$eval('#m-login-status', x => x.textContent);
+    await p.screenshot({ path: path.join(__dirname, 'movel-login-falhou-iphone.png') });
+    reg('E10', 'iPhone, navegador que não deixa entrar: motivo na tela + "Abrir no Safari"; não tenta ir e voltar', [
+      ck(/não permite entrar com o Google\. \(auth\/operation-not-supported-in-this-environment\)/.test(st), st),
+      ck(await vis(p, 'm-ajuda-ios') && !(await vis(p, 'm-ajuda-android')) && await vis(p, 'm-copiar'), 'instrução do iPhone + Copiar link'),
+      ck(!(await p.evaluate(() => window.__FB.redirects)), 'nenhum redirecionamento'),
+      ck(!(await p.$eval('#m-btn-login', x => x.disabled)), 'botão Entrar liberado para tentar de novo'),
+    ]); await ctx.close(); }
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/popup-blocked' } }, 'http://nit.teste/nit-homologacao/movel.html', null, AND);
+    await p.click('#m-btn-login'); await p.waitForTimeout(300);
+    const href = await p.$eval('#m-abrir-chrome', x => x.getAttribute('href'));
+    reg('E11', 'Android, janela bloqueada: botão "Abrir no Chrome" com o mesmo endereço', [
+      ck(await vis(p, 'm-ajuda-android') && !(await vis(p, 'm-ajuda-ios')), 'instrução do Android'),
+      ck(href.startsWith('intent://nit.teste/nit-homologacao/movel.html#Intent;scheme=https;package=com.android.chrome;'), href),
+    ]); await ctx.close(); }
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: 'trava' }, undefined, null, IOS);
+    await p.evaluate(() => { NitMovel.S.demoraMs = 600; }); await p.click('#m-btn-login'); await p.waitForTimeout(250);
+    const cedo = await vis(p, 'm-ajuda'); await p.waitForTimeout(600);
+    reg('E12', 'Janela que nunca responde: depois da espera mostra a saída (sem cancelar)', [
+      ck(!cedo, 'antes da espera: só "Abrindo o Google..."'),
+      ck(await vis(p, 'm-ajuda') && /demorando/.test(await p.$eval('#m-login-status', x => x.textContent)), await p.$eval('#m-login-status', x => x.textContent)),
+    ]); await ctx.close(); }
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/network-request-failed' } }, undefined, null, IOS);
+    await p.click('#m-btn-login'); await p.waitForTimeout(300);
+    reg('E13', 'Sem internet: diz isso e não manda trocar de navegador', [
+      ck(/Sem internet/.test(await p.$eval('#m-login-status', x => x.textContent)) && !(await vis(p, 'm-ajuda')), await p.$eval('#m-login-status', x => x.textContent)),
+    ]); await ctx.close(); }
+  { const { p, ctx } = await abrir(b, { ...base, usuario: null, popup: { erro: 'auth/popup-blocked' }, proximo: U }, undefined, null, IOS);
+    await p.click('#m-btn-login'); await p.waitForTimeout(300);
+    await p.evaluate(() => { window.__FB.popup = null; }); await p.click('#m-btn-login'); await p.waitForTimeout(400);
+    reg('E14', 'Tentou de novo e deu certo: a instrução some e a lista abre', [
+      ck(!(await vis(p, 'm-ajuda')) && await p.$$eval('.m-r', xs => xs.length) === 18, 'lista aberta, ajuda escondida'),
+    ]); await ctx.close(); }
   await b.close();
   const f = R.filter(x => x !== 'PASSOU').length; console.log('RESUMO movel-tela', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
 })();
