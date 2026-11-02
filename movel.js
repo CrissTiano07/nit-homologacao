@@ -187,7 +187,11 @@
     }
     const confere = (digitado, palavra) => sv(digitado).toUpperCase() === palavra;
 
-    const Puro = { ultimaCopia, montarLimpeza, montarRestauro, causas, confere, MAX_COPIAS, urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
+    // ── Copiar uma ocorrência (M1, 01/11): o MESMO texto do botão "Copiar Localização" do card no computador
+    // (Semaforo.copiarLocalizacao): *CÓDIGO ENDEREÇO - PROBLEMA*, com os asteriscos (negrito no WhatsApp). Sem "Desde".
+    function linhaCopiar(c) { return `*${sv(c.codigo)} ${sv(c.endereco)} - ${sv(c.problema)}*`; }
+
+    const Puro = { linhaCopiar, ultimaCopia, montarLimpeza, montarRestauro, causas, confere, MAX_COPIAS, urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
     if (typeof module !== 'undefined' && module.exports) { module.exports = Puro; return; }
 
     // ── Página ──────────────────────────────────────────────────────────
@@ -316,7 +320,7 @@
 
     function iniciar() {
         tela('m-app');
-        montarPaginas(); montarAbas();
+        montarPaginas(); montarAbas(); montarToques();
         $('a-email').textContent = S.email || ''; $('a-versao').textContent = window.NIT_MOVEL_VERSAO || '';
         assinarDia();
         S.db.ref('lixeira').on('value', snap => { S.lixeira = snap.val(); renderAdm(); }, () => { S.lixeira = null; renderAdm(); });
@@ -382,7 +386,60 @@
         r.querySelector('time').textContent = L.tempo;
         r.querySelector('.m-z span').textContent = L.sub;
         if (novo) { const n = document.createElement('i'); n.className = 'm-novo'; n.textContent = 'novo'; r.querySelector('.m-z').append(n); }
+        r.dataset.id = c.eventoId; r.dataset.g = g.id;
         return r;
+    }
+
+    // ── Tocar = detalhes (texto inteiro + Copiar). Segurar e soltar = copia direto (o iPhone só deixa copiar no soltar).
+    async function copiarTexto(txt) {
+        try { await navigator.clipboard.writeText(txt); return true; } catch (e) { /* tenta o jeito antigo */ }
+        try {
+            const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.append(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+            const ok = document.execCommand('copy'); ta.remove(); return ok;
+        } catch (e) { return false; }
+    }
+    let _avisoT = null;
+    function aviso(txt) { const el = $('m-aviso'); el.textContent = txt; el.hidden = false; clearTimeout(_avisoT); _avisoT = setTimeout(() => { el.hidden = true; }, 2200); }
+    const cardDe = r => { const c = (S.kanban || {})[r.dataset.id]; return c ? { ...c, eventoId: r.dataset.id, codigo: sv(c.codigo) || r.dataset.id.split('_')[0] } : null; };
+    async function copiarLinha(r) {
+        const c = cardDe(r); if (!c) return;
+        const ok = await copiarTexto(linhaCopiar(c));
+        aviso(ok ? `📋 ${c.codigo} copiado` : 'Não deu para copiar. Abra e use o botão Copiar.');
+        if (!ok) abrirDetalhe(r);
+    }
+    function abrirDetalhe(r) {
+        const c = cardDe(r); if (!c) return;
+        const g = GRUPOS.find(x => x.id === r.dataset.g) || GRUPOS[0], L = linha(c, g.id, Date.now());
+        $('d-cod').textContent = c.codigo; $('d-cod').style.setProperty('--c', `var(--${g.cor})`);
+        $('d-end').textContent = sv(c.endereco) || '(sem endereço)';
+        const campos = [['Situação', g.rot], ['Problema', sv(c.problema)], ['Causa', sv(c.tipo)], ['Início', sv(c.inicio)],
+            ['Equipe', [sv(c.equipe), sv(c.viatura) && `VT ${sv(c.viatura).replace(/^VT\s*/i, '')}`].filter(Boolean).join(' · ')],
+            ['Apoio', [sv(c.equipeApoio), sv(c.viaturaApoio)].filter(Boolean).join(' · ')], ['Tempo', L.tempo],
+            ['Fim', `${sv(c.data_fim)} ${sv(c.hora_fim)}`.trim() || sv(c.fim)]].filter(([, v]) => v);
+        $('d-campos').replaceChildren(...campos.map(([k, v]) => { const d = document.createElement('div'); d.innerHTML = '<span></span><b></b>';
+            d.firstChild.textContent = k; d.lastChild.textContent = v; return d; }));
+        $('d-texto').textContent = linhaCopiar(c);
+        $('m-det').hidden = false; S._det = r;
+    }
+    function montarToques() {
+        const box = $('m-paginas'); let alvo = null, t0 = null, x0 = 0, y0 = 0, segurou = false;
+        const limpar = () => { clearTimeout(t0); if (alvo) alvo.classList.remove('m-segurando'); alvo = null; };
+        box.addEventListener('touchstart', e => {
+            const r = e.target.closest('.m-r'); if (!r) return;
+            alvo = r; segurou = false; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+            t0 = setTimeout(() => { segurou = true; r.classList.add('m-segurando'); try { navigator.vibrate && navigator.vibrate(15); } catch (x) { /* segue */ } }, 450);
+        }, { passive: true });
+        box.addEventListener('touchmove', e => { if (!alvo) return; const t = e.touches[0];
+            if (Math.abs(t.clientX - x0) > 10 || Math.abs(t.clientY - y0) > 10) limpar(); }, { passive: true });   // rolando: não é toque na linha
+        box.addEventListener('touchend', e => { const r = alvo, s = segurou; limpar(); if (r && s) { e.preventDefault(); copiarLinha(r); } });
+        box.addEventListener('touchcancel', limpar);
+        box.addEventListener('contextmenu', e => { if (e.target.closest('.m-r')) e.preventDefault(); });   // sem o menu do sistema por cima
+        box.addEventListener('click', e => { const r = e.target.closest('.m-r'); if (r) abrirDetalhe(r); });
+        $('d-fechar').addEventListener('click', () => { $('m-det').hidden = true; });
+        $('d-veu').addEventListener('click', () => { $('m-det').hidden = true; });
+        $('d-copiar').addEventListener('click', async () => { const ok = await copiarTexto($('d-texto').textContent);
+            aviso(ok ? '📋 Copiado' : 'Não deu para copiar: selecione o texto e copie.'); if (ok) $('m-det').hidden = true; });
     }
     function cabecalho(g, n) {
         const h = document.createElement('div'); h.className = 'm-gh'; h.style.setProperty('--c', `var(--${g.cor})`);

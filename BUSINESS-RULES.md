@@ -1188,6 +1188,11 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - **Resumo:** totais do dia, quantos em cada situação e CAUSAS DO DIA (mesmo critério da barra lateral do computador).
   - **ADM:** 🧹 Limpar painel, ↩ Restaurar painel (só quando há cópia não restaurada), Abrir versão computador, Sair e a versão. As ações perigosas ficam longe da lista, para ninguém tocar sem querer ao rolar.
   - **Confirmação por baixo da tela (acima do teclado):** é preciso digitar LIMPAR ou RESTAURAR. O destaque fica em Cancelar; sem a palavra, nem o botão nem o Enter fazem nada.
+- **Texto inteiro e copiar (01/11, pedido do Cristiano antes da produção):** o cruzamento aparece inteiro, quebrando linha (nada cortado com "…"). Rolagem lateral por linha foi descartada porque brigaria com o arrastar para o lado que troca de lista.
+  - **Tocar na linha:** abre os detalhes por baixo (situação, problema, causa, início, equipe, apoio, tempo, fim) e o botão **📋 Copiar para compartilhar**.
+  - **Segurar e soltar:** copia direto e mostra "📋 389 copiado". O iPhone só deixa copiar no soltar; se o aparelho recusar, abre os detalhes.
+  - **Rolar com o dedo não copia nem abre nada.**
+  - **Formato (M1, decisão do Cristiano em 01/11):** o mesmo do botão "Copiar Localização" do card no computador: `*389 ENDEREÇO - PROBLEMA*`, com os asteriscos (negrito no WhatsApp) e sem "Desde". Testado contra o botão do card do NIT de verdade (`bateria-movel-paridade.js` PA4; sem os asteriscos, o teste falha).
 - **Limpar/Restaurar pelo celular (01/11):** mesmo efeito do computador (BR-ADM-001): cards e avisos, cópia na lixeira (as 5 últimas), "🧹 Painel limpo (N cards). Cópia guardada." na LINHA DO TEMPO, os computadores abertos esvaziam na hora. No celular, a LINHA DO TEMPO entra na mesma gravação (tudo ou nada). Paridade testada contra o NIT de computador (`testes/bateria-movel-paridade.js`). Falha: "Nada foi apagado", com o código.
 - **Grava no banco só o LIMPAR e o RESTAURAR do ADM.** Fora isso, lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
 - **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.

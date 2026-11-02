@@ -13,7 +13,7 @@
 <script>
     // Um arquivo só para os dois sites: o endereço decide o banco (homologação nunca toca a produção).
     window.NIT_HOMOLOG = /nit-homologacao/.test(location.pathname);
-    window.NIT_MOVEL_VERSAO = 'movelhomolog8';
+    window.NIT_MOVEL_VERSAO = 'movelhomolog10';
     // "ID do cliente da Web" de cada projeto (Firebase → Authentication → Google → Configuração do SDK da Web).
     // Vazio = entra pela janela do Google (como o computador). Preenchido = ir e voltar pela própria página.
     window.NIT_GOOGLE_CLIENT = window.NIT_HOMOLOG ? '865942699083-attv4bvurge6i2efsiv8seat4sc8ri33.apps.googleusercontent.com' : '';   // produção: só depois do "autorizo"
@@ -83,11 +83,28 @@ main{flex:1;min-height:0;position:relative}
 .m-av{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent)}
 .m-m{flex:1;min-width:0}
 .m-a,.m-z{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.m-a b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-a{align-items:flex-start}
+.m-a b{font-size:14px;line-height:1.3;overflow-wrap:anywhere}   /* 01/11: cruzamento inteiro, quebrando linha (sem cortar) */
 .m-a time{flex:none;font-size:12px;color:var(--tx2)}
 .m-alerta .m-a time{color:var(--red);font-weight:800}
 .m-z{margin-top:2px;font-size:13px;color:var(--tx2)}
-.m-z span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-z span{overflow-wrap:anywhere}
+.m-a time{padding-top:1px}
+.m-r{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:pointer;transition:background .15s}
+.m-r:active,.m-r.m-segurando{background:var(--s2)}
+/* detalhes de uma ocorrência */
+#m-det{position:fixed;inset:0;z-index:15}
+#d-veu{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+#d-painel{position:absolute;left:0;right:0;bottom:0;max-height:85%;overflow-y:auto;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--b1);padding:10px 18px calc(18px + env(safe-area-inset-bottom))}
+#d-topo{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+#d-cod{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent)}
+#d-end{font-size:16px;font-weight:800;line-height:1.3}
+#d-campos div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--b1);font-size:14px}
+#d-campos span{color:var(--tx2)}#d-campos b{text-align:right}
+#d-texto{margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--s0);font-size:13px;line-height:1.45;color:var(--tx2);-webkit-user-select:text;user-select:text}
+#d-copiar{min-height:48px;border:0;border-radius:12px;background:var(--blu);color:#fff;font-weight:800}
+#d-fechar{min-height:48px;border:1px solid var(--b1);border-radius:12px;background:none;color:var(--tx2);font-weight:700}
+#m-aviso{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;background:#1f2a38;border:1px solid var(--b1);color:var(--tx1);padding:10px 16px;border-radius:20px;font-size:14px;font-weight:700;white-space:nowrap}
 .m-novo{flex:none;font-style:normal;background:var(--amb);color:#111;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:800}
 .m-vazio{padding:28px 16px;text-align:center;color:var(--tx2);font-size:14px}
 /* resumo e ADM */
@@ -137,7 +154,7 @@ main{flex:1;min-height:0;position:relative}
     <h1>🚦 NIT · SEMÁFOROS</h1>
     <button id="m-btn-login" type="button">Entrar com Google</button>
     <p id="m-login-status"></p>
-    <small id="m-diag">movelhomolog8 (html)</small>
+    <small id="m-diag">movelhomolog10 (html)</small>
     <div id="m-ajuda" hidden>
         <p id="m-ajuda-ios">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br>Toque em <b>⬆︎</b> (compartilhar) → <b>Abrir no Safari</b> e entre por lá.</p>
         <p id="m-ajuda-android">Este navegador (ex.: o do WhatsApp) pode não deixar entrar.<br><a id="m-abrir-chrome" class="m-btn2" href="#">Abrir no Chrome</a></p>
@@ -192,6 +209,21 @@ main{flex:1;min-height:0;position:relative}
     </nav>
 </section>
 
+<div id="m-det" hidden>
+    <div id="d-veu"></div>
+    <div id="d-painel" role="dialog" aria-modal="true" aria-labelledby="d-end">
+        <div class="m-alca"></div>
+        <div id="d-topo"><div id="d-cod"></div><div id="d-end"></div></div>
+        <div id="d-campos"></div>
+        <div id="d-texto"></div>
+        <div class="m-bts">
+            <button id="d-copiar" type="button">📋 Copiar para compartilhar</button>
+            <button id="d-fechar" type="button">Fechar</button>
+        </div>
+    </div>
+</div>
+<div id="m-aviso" role="status" hidden></div>
+
 <div id="m-folha" hidden>
     <div id="m-veu"></div>
     <div id="m-painel" role="dialog" aria-modal="true" aria-labelledby="m-folha-tit">
@@ -206,6 +238,6 @@ main{flex:1;min-height:0;position:relative}
         </div>
     </div>
 </div>
-<script defer src="movel.js?v=movelhomolog8"></script>
+<script defer src="movel.js?v=movelhomolog10"></script>
 </body>
 </html>

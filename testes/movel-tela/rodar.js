@@ -276,6 +276,38 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
       ck(await p.$eval('#a-restaurar', x => x.hidden) && /restaurado: 43/.test(await p.$eval('#m-adm-msg', x => x.textContent)), await p.$eval('#m-adm-msg', x => x.textContent)),
       ck(!erros.length, `erros: ${erros.join('; ') || 'nenhum'}`),
     ]); await ctx.close(); }
+  // ── Texto inteiro + tocar (detalhes) + segurar e soltar (copiar) — 01/11
+  { const { p, ctx, erros } = await abrir(b, JSON.parse(JSON.stringify({ ...base, usuario: U })), 'https://nit.teste/sistemaintegrado/movel.html');   // https: como o site real (área de transferência só existe em https)
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://nit.teste' });
+    const corte = await p.$$eval('.m-pag.on .m-r b', xs => xs.filter(x => x.scrollWidth > x.clientWidth + 1 || getComputedStyle(x).textOverflow === 'ellipsis' && getComputedStyle(x).whiteSpace === 'nowrap').length);
+    const inteiro = await p.$eval('.m-pag.on .m-r b', x => x.textContent);
+    await p.screenshot({ path: path.join(__dirname, 'movel-texto-inteiro.png') });
+    reg('E28', 'Cruzamento inteiro na lista (quebra linha, não corta)', [ck(corte === 0 && / × /.test(inteiro), `cortados: ${corte} · "${inteiro}"`)]);
+    await p.click('.m-pag.on .m-r'); await p.waitForTimeout(200);
+    const det = { aberto: await p.$eval('#m-det', x => !x.hidden), end: await p.$eval('#d-end', x => x.textContent), txt: await p.$eval('#d-texto', x => x.textContent) };
+    await p.screenshot({ path: path.join(__dirname, 'movel-detalhe.png') });
+    await p.click('#d-copiar'); await p.waitForTimeout(200);
+    const cb1 = await p.evaluate(() => navigator.clipboard.readText());
+    reg('E29', 'Tocar na linha abre os detalhes; "Copiar para compartilhar" copia no formato do card (*CÓDIGO ENDEREÇO - PROBLEMA*)', [
+      ck(det.aberto && det.end === inteiro && /^\*\d+ .+ - (APAGADO|PISCANTE)\*$/.test(det.txt), JSON.stringify(det)),
+      ck(cb1 === det.txt && await p.$eval('#m-det', x => x.hidden) && /Copiado/.test(await p.$eval('#m-aviso', x => x.textContent)), `copiado: ${cb1}`),
+    ]);
+    // segurar e soltar (toque real do aparelho, pelo protocolo do navegador)
+    await p.evaluate(() => navigator.clipboard.writeText('')); 
+    const cdp = await ctx.newCDPSession(p), bx = await (await p.$$('.m-pag.on .m-r'))[2].boundingBox();
+    const pt = [{ x: bx.x + 60, y: bx.y + bx.height / 2 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt }); await p.waitForTimeout(650);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(300);
+    const cb2 = await p.evaluate(() => navigator.clipboard.readText()), cod3 = await p.$$eval('.m-pag.on .m-r .m-av', xs => xs[2].textContent);
+    reg('E30', 'Segurar e soltar copia direto (sem abrir detalhes)', [
+      ck(cb2.startsWith(`*${cod3} `) && await p.$eval('#m-det', x => x.hidden) && new RegExp(`${cod3} copiado`).test(await p.$eval('#m-aviso', x => x.textContent)), `copiado: ${cb2} · aviso: ${await p.$eval('#m-aviso', x => x.textContent)}`),
+    ]);
+    // tocar e arrastar (rolar) não abre nada
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt }); await p.waitForTimeout(80);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: pt[0].x, y: pt[0].y - 60 }] }); await p.waitForTimeout(600);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(250);
+    reg('E31', 'Rolar a lista com o dedo não copia nem abre detalhes', [ck(await p.$eval('#m-det', x => x.hidden) && (await p.evaluate(() => navigator.clipboard.readText())) === cb2, 'nada aconteceu'), ck(!erros.length, `erros: ${erros.join('; ') || 'nenhum'}`)]);
+    await ctx.close(); }
   { const { p, ctx } = await abrir(b, JSON.parse(JSON.stringify({ ...base, usuario: U, gravacaoErro: 'PERMISSION_DENIED' })));
     await p.click('#m-abas button[data-aba="adm"]'); await p.click('#a-limpar'); await p.waitForTimeout(200);
     await p.fill('#m-palavra', 'limpar'); await p.click('#m-folha-ok'); await p.waitForTimeout(400);

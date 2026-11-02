@@ -59,6 +59,22 @@ const resumo = e => {
     ck(resumo(restCel) === resumo(restPC), `computador: ${resumo(restPC)}\n     celular:    ${resumo(restCel)}`),
     ck(cards(B) === 3, `computador aberto: ${cards(B)} cards`),
   ]);
+  // 4) M1: copiar uma ocorrência no celular = botão "Copiar Localização" do card no computador
+  await db.ref('kanban/601_241020260650').update({ coluna: 'coluna-vl', viatura: '145', equipe: 'FREITAS' }); await h.dormir(800);
+  const copiados = [];
+  Object.defineProperty(B.w, 'isSecureContext', { value: true, configurable: true });
+  B.w.navigator.clipboard.writeText = t => { copiados.push(t); return Promise.resolve(); };
+  const kb = await ler('kanban'), pc = {}, cel = {};
+  for (const id of Object.keys(kb)) {
+    const card = doc(B).querySelector(`.kanban-card[data-eventoid="${id}"]`);
+    card.querySelector('.btn-card-action.copy-location').click(); await h.dormir(50);
+    pc[id] = copiados[copiados.length - 1];
+    cel[id] = M.linhaCopiar({ ...kb[id], codigo: kb[id].codigo || id.split('_')[0] });
+  }
+  reg('PA4', 'M1: copiar no celular = "Copiar Localização" do card no computador (pendente, despachado, normalizado, sem hora)', [
+    ck(Object.keys(kb).length === 3 && Object.keys(kb).every(id => pc[id] && pc[id] === cel[id]),
+      Object.keys(kb).map(id => `\n       computador: ${pc[id]}\n       celular:    ${cel[id]}`).join('')),
+  ]);
   A.dom.window.close(); B.dom.window.close();
   const f = R.filter(x => x !== 'PASSOU').length;
   console.log('RESUMO movel-paridade', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
