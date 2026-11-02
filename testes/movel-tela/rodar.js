@@ -292,6 +292,11 @@ async function abrir(b, F, url = 'http://nit.teste/sistemaintegrado/movel.html',
       ck(det.aberto && det.end === inteiro && /^\*\d+ .+ - (APAGADO|PISCANTE)\*$/.test(det.txt), JSON.stringify(det)),
       ck(cb1 === det.txt && await p.$eval('#m-det', x => x.hidden) && /Copiado/.test(await p.$eval('#m-aviso', x => x.textContent)), `copiado: ${cb1}`),
     ]);
+    await p.click('.m-chip >> text=Normalizados'); await p.waitForTimeout(800); await p.click('.m-pag.on .m-r'); await p.waitForTimeout(200);
+    const kn = await p.$$eval('#d-campos span', xs => xs.map(x => x.textContent).join(','));
+    await p.screenshot({ path: path.join(__dirname, 'movel-detalhe-norm.png') });
+    reg('E32', 'Detalhes do normalizado: só Início, Fim e Tempo aberto (e Atuou, se houve equipe)', [ck(/^Início,Fim,Tempo aberto(,Atuou)?$/.test(kn), kn)]);
+    await p.click('#d-fechar'); await p.click('.m-chip >> text=Aguardando'); await p.waitForTimeout(800);
     // segurar e soltar (toque real do aparelho, pelo protocolo do navegador)
     await p.evaluate(() => navigator.clipboard.writeText('')); 
     const cdp = await ctx.newCDPSession(p), bx = await (await p.$$('.m-pag.on .m-r'))[2].boundingBox();

@@ -1190,6 +1190,7 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - **Confirmação por baixo da tela (acima do teclado):** é preciso digitar LIMPAR ou RESTAURAR. O destaque fica em Cancelar; sem a palavra, nem o botão nem o Enter fazem nada.
 - **Texto inteiro e copiar (01/11, pedido do Cristiano antes da produção):** o cruzamento aparece inteiro, quebrando linha (nada cortado com "…"). Rolagem lateral por linha foi descartada porque brigaria com o arrastar para o lado que troca de lista.
   - **Tocar na linha:** abre os detalhes por baixo (situação, problema, causa, início, equipe, apoio, tempo, fim) e o botão **📋 Copiar para compartilhar**.
+  - **Normalizado (01/11, pedido do Cristiano):** os detalhes mostram só **Início, Fim, Tempo aberto** (duração) e **Atuou** (VIA LIVRE/AMC pela trajetória do card + equipe e viatura, com apoio). Sem problema e causa. Pendentes continuam com todos os campos.
   - **Segurar e soltar:** copia direto e mostra "📋 389 copiado". O iPhone só deixa copiar no soltar; se o aparelho recusar, abre os detalhes.
   - **Rolar com o dedo não copia nem abre nada.**
   - **Formato (M1, decisão do Cristiano em 01/11):** o mesmo do botão "Copiar Localização" do card no computador: `*389 ENDEREÇO - PROBLEMA*`, com os asteriscos (negrito no WhatsApp) e sem "Desde". Testado contra o botão do card do NIT de verdade (`bateria-movel-paridade.js` PA4; sem os asteriscos, o teste falha).

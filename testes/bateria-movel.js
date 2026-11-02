@@ -110,6 +110,18 @@ reg('MV13', 'Volta do Google: aceita só o que este aparelho pediu', [
     ck(JSON.stringify(cs) === '[["ENEL",10],["FURTO",2],["SEM CAUSA",1]]', JSON.stringify(cs)),
     ck(M.confere(' limpar ', 'LIMPAR') && !M.confere('LIMPA', 'LIMPAR') && !M.confere('', 'LIMPAR'), 'palavra'),
   ]); }
+{ const G = n => M.GRUPOS.find(g => g.id === n), A = new Date(2026, 10, 1, 21, 0).getTime();
+  const nrm = { codigo: '293', inicio: '01/11/2026 14:59', data_fim: '01/11/2026', hora_fim: '15:32', problema: 'APAGADO', tipo: 'FALHA DE EQUIPAMENTO',
+    colunaN: 'VIA LIVRE → AMC', equipe: 'FREITAS', viatura: '03', equipeApoio: 'LIMA', viaturaApoio: 'VT 12' };
+  const cn = M.camposDetalhe(nrm, G('norm'), A), ks = cn.map(x => x[0]).join(',');
+  const so = M.camposDetalhe({ codigo: '1', inicio: '01/11/2026 14:59', fim: '01/11/2026 16:04' }, G('norm'), A);
+  reg('MV17', 'Detalhes do normalizado: só início, fim, tempo aberto e quem atuou (sem problema/causa)', [
+    ck(ks === 'Início,Fim,Tempo aberto,Atuou', ks),
+    ck(cn[2][1] === '33 min' && cn[3][1] === 'VIA LIVRE → AMC · FREITAS · VT 03 + LIMA · VT 12', `${cn[2][1]} | ${cn[3][1]}`),
+    ck(so.map(x => x[0]).join(',') === 'Início,Fim,Tempo aberto' && so[2][1] === '1h05', 'sem equipe: não mostra "Atuou"; fim pelo campo "fim"'),
+    ck(M.duracao(0, 27 * 3600000) === '1d 3h' && M.duracao(5, 1) === '' && M.duracao(null, 1) === '', 'duração longa / fim antes do início / sem início'),
+    ck(M.camposDetalhe(nrm, G('espera'), A).map(x => x[0]).includes('Problema'), 'pendentes continuam com problema e causa'),
+  ]); }
 const f = R.filter(x => x !== 'PASSOU').length;
 console.log('RESUMO movel', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
 process.exit(f ? 1 : 0);

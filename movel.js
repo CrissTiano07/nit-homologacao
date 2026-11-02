@@ -191,7 +191,34 @@
     // (Semaforo.copiarLocalizacao): *CÓDIGO ENDEREÇO - PROBLEMA*, com os asteriscos (negrito no WhatsApp). Sem "Desde".
     function linhaCopiar(c) { return `*${sv(c.codigo)} ${sv(c.endereco)} - ${sv(c.problema)}*`; }
 
-    const Puro = { linhaCopiar, ultimaCopia, montarLimpeza, montarRestauro, causas, confere, MAX_COPIAS, urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
+    // duração de uma ocorrência já encerrada: "33 min", "1h05", "1d 3h"
+    function duracao(iniMs, fimMs) {
+        if (iniMs == null || fimMs == null || fimMs < iniMs) return '';
+        const min = Math.floor((fimMs - iniMs) / 60000);
+        if (min < 60) return `${min} min`;
+        const h = Math.floor(min / 60);
+        return h < 24 ? `${h}h${String(min % 60).padStart(2, '0')}` : `${Math.floor(h / 24)}d ${h % 24}h`;
+    }
+    const equipeTxt = (eq, vt) => [sv(eq), sv(vt) && `VT ${sv(vt).replace(/^VT\s*/i, '')}`].filter(Boolean).join(' · ');
+    // quem atuou: VIA LIVRE / AMC pela trajetória do card (colunaN, derivada do histórico) ou pela coluna onde estava
+    function atuou(c) {
+        const tr = sv(c.colunaN).toUpperCase(), tipos = [];
+        if (/VIA LIVRE/.test(tr)) tipos.push('VIA LIVRE');
+        if (/AMC/.test(tr)) tipos.push('AMC');
+        const eq = [equipeTxt(c.equipe, c.viatura), equipeTxt(c.equipeApoio, c.viaturaApoio)].filter(Boolean).join(' + ');
+        return [tipos.join(' → '), eq].filter(Boolean).join(' · ');
+    }
+    // campos dos detalhes. Normalizado (pedido do Cristiano, 01/11): só início, fim, tempo aberto e quem atuou.
+    function camposDetalhe(c, g, agora) {
+        const fim = `${sv(c.data_fim)} ${sv(c.hora_fim)}`.trim() || sv(c.fim);
+        if (g.id === 'norm') return [['Início', sv(c.inicio)], ['Fim', fim],
+            ['Tempo aberto', duracao(lerDataHora(c.inicio), lerDataHora(fim))], ['Atuou', atuou(c)]].filter(([, v]) => v);
+        const L = linha(c, g.id, agora);
+        return [['Situação', g.rot], ['Problema', sv(c.problema)], ['Causa', sv(c.tipo)], ['Início', sv(c.inicio)],
+            ['Equipe', equipeTxt(c.equipe, c.viatura)], ['Apoio', equipeTxt(c.equipeApoio, c.viaturaApoio)], ['Tempo', L.tempo]].filter(([, v]) => v);
+    }
+
+    const Puro = { duracao, atuou, camposDetalhe, linhaCopiar, ultimaCopia, montarLimpeza, montarRestauro, causas, confere, MAX_COPIAS, urlGoogle, lerRetorno, payloadJwt, conferirRetorno, GRUPOS, hoje, chave, lerDataHora, desde, grupoDe, montar, totais, busca, linha, marcaVista, hhmm, plataforma, linkChrome, motivo };
     if (typeof module !== 'undefined' && module.exports) { module.exports = Puro; return; }
 
     // ── Página ──────────────────────────────────────────────────────────
@@ -410,13 +437,10 @@
     }
     function abrirDetalhe(r) {
         const c = cardDe(r); if (!c) return;
-        const g = GRUPOS.find(x => x.id === r.dataset.g) || GRUPOS[0], L = linha(c, g.id, Date.now());
+        const g = GRUPOS.find(x => x.id === r.dataset.g) || GRUPOS[0];
         $('d-cod').textContent = c.codigo; $('d-cod').style.setProperty('--c', `var(--${g.cor})`);
         $('d-end').textContent = sv(c.endereco) || '(sem endereço)';
-        const campos = [['Situação', g.rot], ['Problema', sv(c.problema)], ['Causa', sv(c.tipo)], ['Início', sv(c.inicio)],
-            ['Equipe', [sv(c.equipe), sv(c.viatura) && `VT ${sv(c.viatura).replace(/^VT\s*/i, '')}`].filter(Boolean).join(' · ')],
-            ['Apoio', [sv(c.equipeApoio), sv(c.viaturaApoio)].filter(Boolean).join(' · ')], ['Tempo', L.tempo],
-            ['Fim', `${sv(c.data_fim)} ${sv(c.hora_fim)}`.trim() || sv(c.fim)]].filter(([, v]) => v);
+        const campos = camposDetalhe(c, g, Date.now());
         $('d-campos').replaceChildren(...campos.map(([k, v]) => { const d = document.createElement('div'); d.innerHTML = '<span></span><b></b>';
             d.firstChild.textContent = k; d.lastChild.textContent = v; return d; }));
         $('d-texto').textContent = linhaCopiar(c);
