@@ -972,6 +972,10 @@
     const NitPlanilha = {
         AUTO: true,             // 14.0: processa sozinho
         PARADA_MIN: 3,          // sem verificação há mais que isso = automação parada
+        // 14.4.1 (06/11): fora do turno o script pode rodar a cada 5 min e avisa em fonte_planilha/intervaloMin.
+        // Parada = mais que (intervalo + 2) min sem sinal, nunca menos que PARADA_MIN. Sem o nó: intervalo 1 (como antes).
+        _intervalo: 1,
+        _limiteParada() { const i = Number(this._intervalo) || 1; return Math.max(this.PARADA_MIN, Math.min(i, 30) + 2); },
         _c: null, _verif: 0, _offset: 0, _proc: null, _parada: null, _tentando: false, _erro: null, _fora: 0, _titulo: '',
         _janela: Math.random().toString(36).slice(2, 10),
         iniciar() {
@@ -987,6 +991,7 @@
             this._acordou();
             document.addEventListener('click', () => { try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {} }, { once: true });
             db.ref('fonte_planilha/verificadoEm').on('value', s => { this._verif = s.val() || 0; this._render(); this._talvezProcessar(); }, () => {});
+            db.ref('fonte_planilha/intervaloMin').on('value', s => { this._intervalo = Number(s.val()) || 1; this._render(); }, () => {});
             db.ref('meta/planilha_processada').on('value', s => { this._proc = s.val(); this._render(); }, () => {});
             setInterval(() => { this._render(); this._talvezProcessar(); }, 20000);
         },
@@ -1005,7 +1010,7 @@
             if (!this._cand[nome]) { this._cand[nome] = Date.now(); setTimeout(() => this._render(), this.CONFIRMA_MS + 500); return false; }
             return Date.now() - this._cand[nome] >= this.CONFIRMA_MS;
         },
-        _paradaBruta() { return !!(this._c && this._c.texto) && !this._offline && (!!this._erro || this._min() >= this.PARADA_MIN); },
+        _paradaBruta() { return !!(this._c && this._c.texto) && !this._offline && (!!this._erro || this._min() >= this._limiteParada()); },
         estaParada() { return this._erro ? !!(this._c && this._c.texto) && !this._offline : this._firme('parada', this._paradaBruta()); },
         semConexao() { return this._firme('semNet', !!(this._c && this._c.texto) && this._offline); },
         _jaProcessada() { return !!(this._c && this._proc && this._proc.assinatura === this._c.assinatura); },
