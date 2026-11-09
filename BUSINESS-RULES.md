@@ -1112,8 +1112,9 @@ O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a out
   - código de 1 dígito;
   - pergunta aberta na tela;
   - texto colado no campo.
+- **Fim da planilha (14.4.2):** é a última linha com código (SCN) na coluna A. Valor solto em outra coluna é ignorado. Linha solta com código longe do fim (30+ linhas vazias antes dela na coluna A) ou trecho lido sem nenhuma ocorrência válida → `fonte_planilha/erro` com o motivo (faixa no NIT; cola-se o WhatsApp), nunca relatório vazio.
 - **Linha com fim ilegível** (ex.: fim digitado na coluna da data) fica fora do relatório e vai para `conferir`.
-- **Automação parada:** depois de 3 minutos sem sinal de vida, ou com o cabeçalho da planilha diferente do esperado (`fonte_planilha/erro`):
+- **Automação parada:** depois de 3 minutos sem sinal de vida (ou do intervalo avisado em `fonte_planilha/intervaloMin` + 2 min, quando maior — 14.4.1; hoje o script roda sempre a 1 min), ou com o cabeçalho da planilha diferente do esperado (`fonte_planilha/erro`):
   - aparece a faixa vermelha "⚠ PLANILHA PAROU ÀS hh:mm · COLE O RELATÓRIO DO WHATSAPP" (ou "MUDOU DE FORMATO");
   - o título da aba vira "⚠ PAROU";
   - sai uma notificação do sistema;
