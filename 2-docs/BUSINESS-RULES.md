@@ -1,0 +1,1205 @@
+# BUSINESS-RULES.md — NIT
+
+> Regras de negócio e contratos consolidados a partir da auditoria dos ciclos 1–8 e das decisões posteriormente validadas durante a investigação de integridade do processamento CEMOB.
+>
+> Este documento separa explicitamente **contratos que devem ser preservados**, **comportamentos confirmados pelo código** e **pontos ainda sujeitos a validação**. Encontrar um comportamento no código não basta, por si só, para transformá-lo em regra normativa.
+
+## 1. Convenções
+
+| Estado | Significado |
+|---|---|
+| 🔵 CONTRATO | Regra consolidada que deve ser preservada |
+| 🟢 CONFIRMADO | Comportamento sustentado pelo código e fluxo auditado |
+| 🟡 VALIDAR | Comportamento observado cuja intenção/regra ainda precisa ser confirmada |
+| 🟠 LEGADO | Existe no código, mas não representa o fluxo principal atual |
+| 🔴 CONFLITO | Código, documentação ou componentes apresentam comportamentos incompatíveis |
+
+Ao modificar o sistema, **não converter automaticamente 🟢 em 🔵**. Contratos são decisões de preservação; comportamentos confirmados descrevem o sistema atual.
+
+---
+
+# 2. Identidade da ocorrência
+
+## BR-ID-001 — `eventoId` identifica a ocorrência
+**Estado:** 🔵 CONTRATO
+
+A identidade forte da ocorrência semafórica é `eventoId`.
+
+Conceitualmente:
+
+```text
+eventoId = codigo + inicio
+```
+
+Alterações não devem substituir essa identidade por `codigo` isoladamente.
+
+## BR-ID-002 — `codigo` sozinho não identifica uma ocorrência
+**Estado:** 🔵 CONTRATO
+
+O mesmo código pode aparecer em momentos diferentes e representar ocorrências distintas.
+
+```text
+codigo = chave auxiliar
+eventoId = identidade forte
+```
+
+## BR-ID-003 — Mesmo código + início diferente pode representar novo evento
+**Estado:** 🟢 CONFIRMADO
+
+O fluxo de reprocessamento/reincidência permite que o mesmo `codigo` produza outro `eventoId` quando o início é diferente.
+
+Isso não autoriza tratar automaticamente toda alteração de `inicio` como nova ocorrência quando já existe uma ocorrência conhecida e a nova entrada contradiz dados anteriormente recebidos. Nesses casos, a situação pode exigir reconciliação antes da criação de nova identidade.
+
+## BR-ID-004 — Herança preserva identidade
+**Estado:** 🔵 CONTRATO
+
+Quando uma ocorrência é reconhecida como continuidade/herança, seu `eventoId` é preservado.
+
+## BR-ID-005 — `ID_OCORRENCIA` exportado corresponde a `eventoId`
+**Estado:** 🟢 CONFIRMADO
+
+A exportação não deve substituir `eventoId` por `codigo`.
+
+## BR-ID-006 — Contradição da fonte não autoriza troca silenciosa de identidade
+**Estado:** 🔵 CONTRATO
+
+Quando uma ocorrência conhecida recebe posteriormente informação incompatível capaz de alterar sua identidade, o NIT não deve concluir silenciosamente que se trata de nova ocorrência, retificação ou continuidade.
+
+Enquanto a contradição não estiver reconciliada, a identidade operacional conhecida deve ser protegida.
+
+Uma reconciliação confirmada deve privilegiar a preservação da ocorrência e de seu histórico quando ficar estabelecido que a nova informação representa retificação da mesma ocorrência.
+
+---
+
+# 3. Estado da ocorrência × estado operacional
+
+## BR-OP-001 — As duas dimensões são diferentes
+**Estado:** 🔵 CONTRATO
+
+O estado da falha/ocorrência e o estado da operação não são sinônimos.
+
+```text
+OCORRÊNCIA
+├── estado da ocorrência
+│   ├── PENDENTE
+│   ├── NORMALIZADO
+│   └── SEM_NECESSIDADE
+│
+└── estado operacional
+    ├── espera
+    ├── despacho
+    ├── apoio
+    ├── rendição
+    └── encerramento
+```
+
+## BR-OP-002 — Encerrar operação não significa normalizar ocorrência
+**Estado:** 🔵 CONTRATO
+
+O encerramento operacional encerra a atuação/equipe naquele ciclo. A normalização representa o encerramento técnico da ocorrência.
+
+Uma implementação não deve tratar essas ações como equivalentes.
+
+## BR-OP-003 — `coluna` e `colunaN` possuem significados diferentes
+**Estado:** 🔵 CONTRATO
+
+- `coluna`: posição operacional atual no Kanban.
+- `colunaN`: trajetória operacional construída ao longo da ocorrência.
+
+Não substituir um pelo outro.
+
+## BR-OP-004 — `sub` e `pl` não são sinônimos
+**Estado:** 🔵 CONTRATO
+
+No modelo auditado:
+
+```text
+sub = natureza operacional (vl | amc | sn)
+pl  = condição simplificada usada pelo estado
+```
+
+Alterações devem preservar a diferença semântica entre os campos.
+
+## BR-OP-005 — Retificação do estado da ocorrência não reescreve automaticamente o estado operacional
+**Estado:** 🔵 CONTRATO
+
+Uma reconciliação CEMOB pode alterar o estado atual da ocorrência sem tornar falsos os fatos operacionais anteriormente registrados.
+
+Portanto, uma transição confirmada:
+
+```text
+NORMALIZADO → PENDENTE
+```
+
+não deve, por si só:
+
+- reativar automaticamente equipe anteriormente encerrada;
+- restaurar automaticamente viatura;
+- apagar ou recriar despacho;
+- apagar chegada;
+- apagar apoio;
+- apagar rendição;
+- restaurar agendamento;
+- reescrever silenciosamente a trajetória operacional.
+
+O estado operacional corrente deve ser tratado separadamente conforme o fluxo operacional aplicável.
+
+---
+
+# 4. Despacho
+
+## BR-DES-001 — Despacho altera o estado operacional
+**Estado:** 🟢 CONFIRMADO
+
+O despacho atualiza o snapshot da ocorrência e registra a ação no histórico.
+
+## BR-DES-002 — Primeiro despacho deve permanecer identificável
+**Estado:** 🔵 CONTRATO
+
+`tsFirstDispatch` representa o primeiro despacho.
+
+Se já existe, novos despachos/rendições não devem sobrescrevê-lo.
+
+## BR-DES-003 — `tsDespacho` representa o marco operacional atual
+**Estado:** 🟢 CONFIRMADO
+
+`tsDespacho` não significa necessariamente “primeiro despacho”. Ele pode ser atualizado por nova assunção operacional, inclusive rendição.
+
+```text
+tsFirstDispatch = primeiro despacho
+tsDespacho      = despacho/assunção operacional atual
+```
+
+## BR-DES-004 — Chegada e despacho são marcos temporais distintos
+**Estado:** 🟢 CONFIRMADO
+
+`tsChegada` não deve ser tratado automaticamente como equivalente a `tsDespacho`.
+
+---
+
+# 5. Apoio
+
+## BR-APO-001 — Apoio não substitui a equipe principal
+**Estado:** 🟢 CONFIRMADO
+
+O despacho principal utiliza:
+
+```text
+equipe
+viatura
+```
+
+O apoio utiliza:
+
+```text
+equipeApoio
+viaturaApoio
+```
+
+Registrar apoio não deve, por si só, apagar/substituir a equipe principal.
+
+## BR-APO-002 — Apoio participa da trajetória operacional
+**Estado:** 🟢 CONFIRMADO
+
+Apoio gera registro histórico e influencia a derivação de `colunaN`.
+
+---
+
+# 6. Rendição
+
+## BR-REN-001 — Rendição pressupõe operação em andamento
+**Estado:** 🟢 CONFIRMADO
+
+A interface/fluxo auditado só disponibiliza rendição após despacho.
+
+## BR-REN-002 — Rendição troca a responsabilidade operacional
+**Estado:** 🟢 CONFIRMADO
+
+Na execução, a nova equipe passa a ocupar os campos principais:
+
+```text
+equipe
+viatura
+sub
+```
+
+A rendição também atualiza `tsDespacho`, recalcula `colunaN` e move o card para a coluna operacional correspondente.
+
+## BR-REN-003 — Rendição pode ser Via Livre ou AMC
+**Estado:** 🟢 CONFIRMADO
+
+Tipos observados:
+
+```text
+vl
+amc
+```
+
+## BR-REN-004 — Equipe que entra é obrigatória
+**Estado:** 🟢 CONFIRMADO
+
+A rendição não deve ser executada sem equipe de entrada válida.
+
+## BR-REN-005 — Rendição pode ser imediata ou agendada
+**Estado:** 🟢 CONFIRMADO
+
+Os dois caminhos pertencem ao fluxo atual.
+
+## BR-REN-006 — Agendar não altera imediatamente o estado operacional
+**Estado:** 🟢 CONFIRMADO
+
+O compromisso é persistido em:
+
+```text
+/kanban/{eventoId}/agendamento
+```
+
+mas a equipe/coluna corrente não deve ser alterada apenas pelo agendamento.
+
+## BR-REN-007 — Hora agendada e hora real são conceitos diferentes
+**Estado:** 🟢 CONFIRMADO
+
+A execução pode ocorrer em horário diferente do inicialmente programado. O timestamp histórico deve representar a execução efetiva informada.
+
+## BR-REN-008 — Executar rendição remove o agendamento correspondente
+**Estado:** 🟢 CONFIRMADO
+
+Após execução, o agendamento deixa de representar compromisso pendente.
+
+## BR-REN-009 — Cancelar agendamento não altera a operação atual
+**Estado:** 🟢 CONFIRMADO
+
+Cancelar compromisso futuro não equivale a executar uma rendição.
+
+## BR-REN-010 — Executor automático de rendição agendada
+**Estado:** 🟡 VALIDAR
+
+A auditoria encontrou persistência do agendamento, mas não encontrou executor automático. Não assumir que exista scheduler operacional para isso.
+
+---
+
+# 7. Histórico operacional
+
+## BR-HIS-001 — Ações operacionais relevantes são registradas no histórico
+**Estado:** 🟢 CONFIRMADO
+
+Despacho, apoio e rendição possuem eventos históricos observados.
+
+## BR-HIS-002 — Histórico é append-only
+**Estado:** 🔵 CONTRATO
+
+Persistência:
+
+```text
+/kanban/{eventoId}/historico/{pushKey}
+```
+
+Novos eventos devem ser acrescentados sem sobrescrever eventos anteriores.
+
+## BR-HIS-003 — Estado atual permanece no nó principal
+**Estado:** 🔵 CONTRATO
+
+O sistema mantém:
+
+```text
+snapshot atual + histórico
+```
+
+O histórico não substitui a necessidade de um estado corrente.
+
+## BR-HIS-004 — `colunaN` é derivável da trajetória histórica
+**Estado:** 🟢 CONFIRMADO
+
+Regra observada:
+
+```text
+despacho → inicia/reinicia segmento
+apoio    → acrescenta tipo ao segmento
+rendição → fecha segmento e inicia outro
+```
+
+## BR-HIS-005 — Histórico pode auxiliar reconstrução de estado legado
+**Estado:** 🟢 CONFIRMADO
+
+Compatibilidade com registros antigos não deve ser removida sem verificar consumidores e dados existentes.
+
+## BR-HIS-006 — Retificação não apaga fatos históricos
+**Estado:** 🔵 CONTRATO
+
+Uma correção posterior da fonte CEMOB ou uma decisão de reconciliação não deve apagar silenciosamente eventos operacionais que efetivamente foram registrados.
+
+A correção do estado atual deve coexistir com a preservação da trajetória anterior.
+
+## BR-HIS-007 — Reversão de decisão não apaga a decisão anterior
+**Estado:** 🔵 CONTRATO
+
+Quando uma decisão humana de reconciliação for posteriormente corrigida ou revertida, a decisão original e sua reversão devem permanecer auditáveis.
+
+Reverter estado não significa apagar história.
+
+---
+
+# 8. Normalização e reconciliação
+
+## BR-NOR-001 — Data e hora de fim são obrigatórias na normalização manual
+**Estado:** 🟢 CONFIRMADO
+
+A Central valida os dois campos antes de concluir a ação.
+
+## BR-NOR-002 — Momento operacional de fim e momento do registro são distintos
+**Estado:** 🔵 CONTRATO
+
+```text
+data_fim = data operacional do fim
+hora_fim = hora operacional do fim
+ts_norm  = momento do registro da normalização
+```
+
+Não substituir `data_fim`/`hora_fim` por `Date.now()` indiscriminadamente.
+
+## BR-NOR-003 — Normalização move a ocorrência para Normalizados
+**Estado:** 🟢 CONFIRMADO
+
+O estado auditado recebe:
+
+```text
+status = "NORMALIZADO"
+coluna = "coluna-normalizados"
+```
+
+além de `data_fim`, `hora_fim`, `ts_norm`, observações e operador.
+
+## BR-NOR-004 — Normalização pode acrescentar observação sem destruir a anterior
+**Estado:** 🟢 CONFIRMADO
+
+Quando não há nova observação, o fluxo pode preservar a já existente.
+
+## BR-NOR-005 — Ocorrência pode nascer normalizada
+**Estado:** 🟢 CONFIRMADO
+
+Se o relatório recebido já contém `Fim`, o parser pode classificar a ocorrência como `NORMALIZADO` e persistir os dados de fim desde sua criação.
+
+Isso é diferente da normalização manual posterior.
+
+## BR-NOR-006 — Ocorrência normalizada não participa da herança
+**Estado:** 🔵 CONTRATO
+
+No fluxo de continuidade auditado, apenas ocorrência não normalizada é candidata à herança.
+
+A reconciliação explícita prevista em `BR-NOR-007` não constitui herança e não altera este contrato.
+
+## BR-NOR-007 — NORMALIZADO → PENDENTE pode ocorrer por reconciliação explícita
+**Estado:** 🔵 CONTRATO
+
+Uma ocorrência normalizada pode retornar a `PENDENTE` quando nova evidência CEMOB contradiz a normalização anterior e uma decisão humana confirma que a nova representação corresponde à mesma ocorrência.
+
+Exemplo:
+
+```text
+VERSÃO ANTERIOR
+Início: 10:00
+Fim:    10:40
+Estado: NORMALIZADO
+
+NOVA VERSÃO
+Início: 10:00
+Fim:    ausente
+```
+
+A retirada de `Fim` deve ser tratada como possível retificação da fonte.
+
+Essa situação:
+
+- não constitui automaticamente reincidência;
+- não constitui herança;
+- não autoriza criação silenciosa de novo `eventoId`;
+- não autoriza criação silenciosa de segundo card;
+- não autoriza apagamento do histórico.
+
+Antes da decisão humana, a contradição deve ser diagnosticada e o estado conhecido deve permanecer protegido.
+
+> 14/10/2026: confirmado pelo responsável. Até a decisão, o card continua normalizado e a conferência mostra "Atividade incomum: normalizado voltou sem fim". A decisão humana será o botão "Retornar aos pendentes" (NIT 13.2), reversível.
+
+## BR-NOR-008 — Reconciliação preserva identidade quando confirmada como retificação
+**Estado:** 🔵 CONTRATO
+
+Quando o operador confirmar que a contradição representa retificação da mesma ocorrência:
+
+```text
+eventoId anterior = eventoId posterior
+```
+
+A ocorrência permanece a mesma.
+
+Devem ser preservados, quando existentes:
+
+- `eventoId`;
+- card;
+- histórico operacional;
+- trajetória já registrada;
+- fatos operacionais anteriores.
+
+A representação CEMOB atual pode ser corrigida sem recriar a ocorrência.
+
+## BR-NOR-009 — Consequência deve ser apresentada antes da decisão
+**Estado:** 🔵 CONTRATO
+
+Quando a reconciliação exigir decisão humana, o NIT deve apresentar o impacto projetado antes da persistência.
+
+A apresentação deve priorizar os indicadores utilizados operacionalmente pelo usuário, incluindo, quando aplicável:
+
+```text
+Ocorrências
+Pendentes
+Normalizados
+```
+
+Exemplo conceitual:
+
+```text
+ANTES                 APÓS CONFIRMAR
+
+Ocorrências   24      24
+Pendentes      3       4
+Normalizados  21      20
+```
+
+A interface deve responder de forma intuitiva à pergunta operacional:
+
+```text
+"O que aconteceu aqui?"
+```
+
+## BR-NOR-010 — Decisão humana resolve o caso, não ensina o motor
+**Estado:** 🔵 CONTRATO
+
+Uma escolha realizada pelo operador durante uma reconciliação:
+
+- pode resolver o estado daquela ocorrência;
+- pode ser registrada para auditoria;
+- pode gerar evidência para investigação posterior;
+
+mas não deve:
+
+- alterar automaticamente contratos;
+- alterar regras determinísticas;
+- modificar invariantes;
+- ensinar automaticamente ao sistema que casos futuros equivalentes devem receber a mesma decisão.
+
+Produção gera evidência para avaliação; não modifica diretamente aquilo que define o comportamento correto do motor.
+
+## BR-NOR-011 — Decisão incorreta deve ser recuperável quando tecnicamente seguro
+**Estado:** 🔵 CONTRATO
+
+Nas operações protegidas pelo mecanismo de reconciliação, uma decisão humana incorreta deve poder ser corrigida pelo próprio NIT sem exigir, como procedimento normal, exclusão manual de registros no Firebase.
+
+Quando uma reversão simples puder destruir ou sobrescrever fatos operacionais posteriores, o sistema não deve restaurar cegamente um estado antigo.
+
+Nesse caso, deve preservar os fatos posteriores e encaminhar a situação para nova reconciliação.
+
+---
+
+# 9. Classificação inicial da ocorrência
+
+## BR-CLA-001 — O parser pode produzir estados diferentes antes de ação manual
+**Estado:** 🟢 CONFIRMADO
+
+O fluxo auditado reconhece, entre outros:
+
+```text
+Fim preenchido
+→ NORMALIZADO
+
+indicadores de sem necessidade
+→ SEM_NECESSIDADE
+
+caso contrário / necessidade ativa
+→ PENDENTE
+```
+
+## BR-CLA-002 — Classificação automática não deve inventar informação ausente
+**Estado:** 🔵 CONTRATO
+
+O sistema é assistido pelo operador: pode detectar condições a partir do relatório recebido, mas não deve fabricar dados operacionais que não estejam presentes.
+
+---
+
+# 10. Continuidade, herança e reincidência
+
+## BR-CON-001 — Resolver primeiro por `eventoId`
+**Estado:** 🟢 CONFIRMADO
+
+A identidade forte tem prioridade.
+
+## BR-CON-002 — `codigo` pode ser usado como chave auxiliar
+**Estado:** 🟢 CONFIRMADO
+
+Quando não há correspondência exata por `eventoId`, o código pode participar da tentativa de continuidade/herança.
+
+O uso auxiliar de `codigo` não autoriza colapsar silenciosamente identidades incompatíveis.
+
+## BR-CON-003 — Somente ocorrência não normalizada é candidata à herança
+**Estado:** 🔵 CONTRATO
+
+Normalizados não devem ser reabertos implicitamente pelo mecanismo de herança.
+
+Uma eventual volta de `NORMALIZADO → PENDENTE` deve ocorrer pelo fluxo explícito de reconciliação definido na seção 8.
+
+## BR-CON-004 — Herança mantém identidade
+**Estado:** 🔵 CONTRATO
+
+Continuidade não deve criar novo `eventoId` para a mesma ocorrência herdada.
+
+## BR-CON-005 — Herança atualiza `dataReferencia`
+**Estado:** 🟢 CONFIRMADO
+
+A data do plantão atual pode mudar sem alterar o início real da ocorrência.
+
+## BR-CON-006 — Mesmo código pode representar reincidência
+**Estado:** 🟢 CONFIRMADO
+
+Código repetido não prova continuidade.
+
+## BR-CON-007 — Detecção de lacuna não substitui decisão do operador
+**Estado:** 🔵 CONTRATO
+
+O sistema pode indicar possível lacuna, mas o operador continua responsável por obter/conferir/processar o relatório externo.
+
+## BR-CON-008 — O sistema não lê WhatsApp automaticamente
+**Estado:** 🟢 CONFIRMADO
+
+Não assumir integração automática com a fonte externa quando ela não existe.
+
+## BR-CON-009 — Contradição não resolvida deve falhar de forma segura
+**Estado:** 🔵 CONTRATO
+
+Quando o NIT encontrar uma situação incompatível que não consiga classificar com segurança como continuidade, reincidência ou retificação, não deve inventar silenciosamente uma solução.
+
+O comportamento esperado é:
+
+```text
+detectar
+→ preservar estado conhecido
+→ diagnosticar
+→ impedir alteração estrutural perigosa
+→ solicitar revisão/decisão quando necessária
+```
+
+Uma situação não compreendida é preferível a uma decisão automática capaz de corromper identidade, histórico ou contagem.
+
+
+## BR-CON-010 — Um semáforo tem no máximo uma ocorrência pendente
+**Estado:** 🔵 CONTRATO — decidido pelo responsável em 14/10/2026 (NIT 13.1)
+
+Uma nova ocorrência do mesmo semáforo só existe **depois do fim explícito** da anterior.
+
+```text
+anterior com fim  e  fim ≤ novo início  → nova ocorrência
+anterior sem fim                        → continua a mesma ocorrência
+```
+
+Problema adicional no mesmo evento atualiza a mesma ocorrência (observações, tipo, problema).
+
+## BR-CON-011 — Reincidência é marcada pela data do relatório
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+A marca ↺ REINC vale quando a ocorrência anterior do mesmo semáforo aparece no relatório do mesmo dia (`dataReferencia`) ou é encerrada nele — inclusive se começou no dia anterior. Anterior encerrada em dia que não aparece no relatório atual → nova ocorrência **sem** marca.
+
+A marca é visual. A criação da nova ocorrência depende da condição temporal (BR-CON-010), não da marca.
+
+## BR-CON-012 — Sobreposição ou dados insuficientes não criam reincidência
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+Se o fim da anterior é **posterior** ao novo início, ou falta data/hora para comparar, o NIT **não** cria reincidência automaticamente: preserva a pendência, guarda a linha no card e sinaliza na conferência. A comparação usa data e hora completas (a meia-noite não engana a regra).
+
+## BR-CON-013 — Identidade estável com horários anteriores
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+A chave do card no Firebase não muda. Quando a fonte corrige o início, o card passa a ter:
+
+```text
+inicio          → início atual (referência do encerramento)
+inicioAnterior  → início imediatamente anterior
+aliases/{id}    → todos os eventoId anteriores (reconhecimento)
+```
+
+Só o **início atual** encerra a ocorrência. Horários anteriores reconhecem o card, mas não o encerram e não impedem o encerramento. Correção de horário é registrada (toast "⟲ Horário corrigido") e não exige ação do operador. Cards antigos (sem `aliases`) são reconhecidos pela própria chave: nenhuma migração.
+
+## BR-CON-014 — Duas linhas abertas do mesmo semáforo são inconsistência da fonte
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+O NIT mantém **um** card pendente, guarda a outra linha no card (`aliases`) e alerta na conferência. Nenhuma linha é descartada em silêncio.
+
+## BR-CON-015 — Identidade sem início é fixa
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+Sem Início, `eventoId = codigo + "_SI" + data do plantão (+ "_n" se houver mais de uma)`. Não usa `Date.now()`. Cards antigos com ID de horário continuam reconhecidos.
+
+## BR-CON-016 — Pendências duplicadas legadas
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+Pares de pendentes do mesmo semáforo criados antes da BR-CON-010 são preservados (nada é apagado ou mesclado automaticamente) e sinalizados na conferência. O operador resolve com "Retirar do painel" (NIT 13.2), reversível e indicado na conferência.
+
+## BR-CON-017 — Card cujo início sumiu e o semáforo aparece com um único horário já encerrado
+**Estado:** 🔵 CONTRATO — decidido pelo responsável em 15/10/2026 (substitui a decisão provisória C16)
+
+O relatório é cumulativo no dia: uma linha só some se a fonte a editou. Se o início do card pendente não aparece mais e o semáforo vem com **uma única** outra linha, já encerrada, e nenhuma aberta, é **correção de horário com encerramento no mesmo card** (CONTRATO §13, caso real 468/790): mesma chave, equipe e histórico preservados, início anterior guardado, registro na conferência ("⟲ Horário corrigido"). Com várias linhas encerradas, ou uma encerrada e outra aberta, o card **não** é normalizado: a situação é sinalizada.
+
+## BR-CON-018 — Decisão única para carga inicial, reprocessamento e conferência
+**Estado:** 🔵 CONTRATO — 14/10/2026
+
+As três etapas usam a mesma classificação (`_classificarLinhas`), que olha o relatório **inteiro** e o estado dos cards, em ordem de horário — nunca pela ordem das linhas. A conferência reclassifica o estado gravado: se o motor aplicou tudo, toda linha volta como "manter" ou como inconsistência conhecida.
+
+---
+
+# 11. Exportação
+
+## BR-EXP-001 — `/kanban` é a origem operacional da exportação
+**Estado:** 🟢 CONFIRMADO
+
+Google Sheets não é o estado operacional primário.
+
+## BR-EXP-002 — Frontend resolve identidade/estado antes do backend
+**Estado:** 🔵 CONTRATO
+
+O backend recebe o estado resolvido; não deve recriar arbitrariamente a identidade da ocorrência.
+
+## BR-EXP-003 — `eventoId` é exportado como `ID_OCORRENCIA`
+**Estado:** 🟢 CONFIRMADO
+
+Essa correspondência deve permanecer consistente.
+
+## BR-EXP-004 — Normalização usa `ts_norm`
+**Estado:** 🟢 CONFIRMADO
+
+O timestamp de registro da normalização possui função própria na exportação.
+
+## BR-EXP-005 — Herança pode gerar nova linha no Sheets
+**Estado:** 🟢 CONFIRMADO
+
+Continuidade da identidade não significa necessariamente atualização da mesma linha física em todos os plantões.
+
+## BR-EXP-006 — Atualização considera a linha mais recente do mesmo `eventoId`
+**Estado:** 🟢 CONFIRMADO
+
+## BR-EXP-007 — `colunaN` tem prioridade quando disponível
+**Estado:** 🟢 CONFIRMADO
+
+Fallback/reconstrução não deve substituir uma `colunaN` válida sem motivo.
+
+## BR-EXP-008 — Google Sheets é destino de exportação
+**Estado:** 🔵 CONTRATO
+
+O frontend fala com a API; não precisa conhecer a implementação interna da planilha.
+
+## BR-EXP-009 — Scheduler atual de `cron_export.py`
+**Estado:** 🟡 VALIDAR
+
+A existência do código não comprova que exista scheduler ativo em produção.
+
+---
+
+# 12. Reboques
+
+## BR-REB-001 — Reboques é domínio operacional separado
+**Estado:** 🔵 CONTRATO
+
+O módulo usa:
+
+```text
+/reboques/plantao_ativo
+```
+
+e não altera o `/kanban` do Semáforo.
+
+## BR-REB-002 — `status` do reboquista representa estado do recurso
+**Estado:** 🔵 CONTRATO
+
+Estados observados:
+
+```text
+DISPONÍVEL ↔ ATUANDO
+```
+
+Não confundir esse `status` com estado de ocorrência semafórica.
+
+## BR-REB-003 — Evento pode existir sem reboquista
+**Estado:** 🟢 CONFIRMADO
+
+Uma ocorrência de reboque pode aguardar designação.
+
+## BR-REB-004 — Evento pode ter zero, um ou vários reboquistas
+**Estado:** 🟢 CONFIRMADO
+
+## BR-REB-005 — Relação evento ↔ reboquista é bidirecional
+**Estado:** 🔵 CONTRATO
+
+O vínculo existe nos dois lados:
+
+```text
+reboquista.eventoId
+evento.reboquistas
+```
+
+Alterações de alocação/transferência devem manter os dois lados consistentes.
+
+## BR-REB-006 — Transferência remove vínculo anterior
+**Estado:** 🟢 CONFIRMADO
+
+Um reboquista movido para outro evento deixa de pertencer ao anterior.
+
+## BR-REB-007 — Finalização individual libera o recurso
+**Estado:** 🟢 CONFIRMADO
+
+A finalização observada:
+
+```text
+remove do evento
+status = disponível
+eventoId = ""
+ocorrencia = ""
+recalcula ordem
+```
+
+## BR-REB-008 — Finalização do evento atualmente remove o evento ativo
+**Estado:** 🟡 VALIDAR
+
+O código auditado libera os vinculados e remove `/eventos/{evId}`. Não transformar isso em regra permanente até confirmar a intenção operacional.
+
+## BR-REB-009 — Histórico permanente de eventos de Reboques
+**Estado:** 🟡 VALIDAR
+
+Não foi encontrado histórico persistente após finalização.
+
+## BR-REB-010 — “Limpar Plantão” remove o conjunto operacional
+**Estado:** 🟡 VALIDAR
+
+O comportamento existe, mas sua permanência como regra de negócio precisa validação.
+
+## BR-REB-011 — Drag & Drop pode representar operação de negócio
+**Estado:** 🟢 CONFIRMADO
+
+Reordenar, alocar e transferir podem gravar alterações reais no Firebase. Não tratar todo drag & drop como mudança puramente visual.
+
+---
+
+# 13. Guardião e integridade do processamento
+
+## BR-GUA-001 — Estado projetado deve preceder persistência protegida
+**Estado:** 🔵 CONTRATO
+
+Nos fluxos protegidos pelo Guardião, o NIT deve determinar o resultado projetado da operação antes de persistir uma alteração capaz de afetar integridade.
+
+Conceitualmente:
+
+```text
+entrada
+→ interpretação
+→ estado projetado
+→ validação
+→ apresentação ao operador
+→ decisão quando necessária
+→ persistência
+```
+
+## BR-GUA-002 — Confirmação humana complementa proteção automática
+**Estado:** 🔵 CONTRATO
+
+A confirmação do operador não substitui invariantes automáticos.
+
+Uma decisão humana não deve ser utilizada como autorização genérica para produzir silenciosamente:
+
+- duplicidade;
+- perda de ocorrência;
+- troca indevida de identidade;
+- apagamento de histórico;
+- corrupção estrutural.
+
+## BR-GUA-003 — Divergência deve ser explicável
+**Estado:** 🔵 CONTRATO
+
+Diferenças entre a entrada CEMOB e o estado projetado pelo NIT devem ser identificadas antes da persistência sempre que puderem afetar a integridade do processamento.
+
+Comparação apenas de totais não é suficiente quando conjuntos diferentes podem produzir a mesma quantidade.
+
+## BR-GUA-004 — Operação deve permanecer intuitiva
+**Estado:** 🔵 CONTRATO
+
+A apresentação do Guardião deve acompanhar o modelo mental já utilizado pelo operador:
+
+```text
+olhar totais CEMOB
+→ olhar NIT
+→ comparar
+→ perceber diferença
+→ perguntar "o que aconteceu?"
+→ receber explicação
+→ decidir quando necessário
+```
+
+O Guardião não deve exigir que o operador aprenda um método paralelo de conferência para realizar uma atividade já conhecida.
+
+## BR-GUA-005 — Casos relevantes do Guardião devem ser auditáveis
+**Estado:** 🔵 CONTRATO
+
+Toda intervenção do Guardião que exija decisão humana deve gerar um registro permanente e auditável da:
+
+- detecção;
+- situação relevante;
+- decisão;
+- consequência;
+- eventual reversão.
+
+Ruídos de representação absorvidos automaticamente pelo parser não precisam gerar caso de integridade.
+
+O schema físico do Registro de Integridade deve ser definido na implementação/documentação de dados correspondente; esta regra estabelece apenas o contrato funcional.
+
+## BR-GUA-006 — Produção gera evidência, não regra automática
+**Estado:** 🔵 CONTRATO
+
+Casos detectados em produção podem alimentar investigação, testes e evolução posterior do NIT.
+
+O fluxo correto é:
+
+```text
+produção
+→ evidência
+→ investigação
+→ validação
+→ gabarito/teste
+→ eventual alteração do motor
+```
+
+Nunca:
+
+```text
+decisão do operador
+→ alteração automática da regra determinística
+```
+
+## BR-GUA-007 — Erro tratável é preferível a dano estrutural
+**Estado:** 🔵 CONTRATO
+
+O sistema não precisa eliminar todos os erros possíveis antes de entrar em operação.
+
+Quando não for possível tratar uma inconsistência com segurança, deve privilegiar preservação, observabilidade e recuperação em vez de uma correção automática que possa comprometer identidade, histórico ou estado persistido.
+
+---
+
+# 14. Componentes legados e compatibilidade
+
+Os itens abaixo **não são regras de negócio**, mas impõem uma regra de manutenção: não remover sem provar ausência de consumidores.
+
+| Componente | Estado |
+|---|---|
+| `NitNormalizar` | 🟠 possível implementação legada/alternativa |
+| modal antigo de despacho | 🟠 implementação alternativa |
+| `/api/v1/despacho` | 🟠 compatibilidade/legado |
+| `/api/v1/normalizar` | 🟠 compatibilidade/legado |
+| referências a Railway | 🟠 infraestrutura histórica |
+| `routes/config.py` | 🟠 aparentemente não registrado |
+| `NitCentral` | 🟢 fluxo principal atual |
+| `routes/export.py` | 🟢 fluxo principal de exportação |
+
+### Regra de manutenção
+
+**Nada marcado como legado deve ser apagado apenas porque parece antigo.**
+
+Antes de remover:
+
+1. localizar consumidores;
+2. verificar listeners/handlers;
+3. verificar chamadas de API;
+4. verificar dados históricos;
+5. confirmar que o fluxo principal não depende do componente;
+6. só então propor remoção.
+
+---
+
+# 15. Regras de segurança para mudanças
+
+Qualquer alteração funcional deve preservar, até decisão explícita em contrário:
+
+1. identidade forte por `eventoId`;
+2. distinção entre `eventoId` e `codigo`;
+3. distinção entre estado da ocorrência e estado operacional;
+4. distinção entre normalização e encerramento operacional;
+5. histórico append-only;
+6. separação entre `coluna` e `colunaN`;
+7. preservação de `tsFirstDispatch`;
+8. significado operacional de `tsDespacho`;
+9. continuidade sem herdar ocorrências normalizadas;
+10. consistência bidirecional de Reboques;
+11. separação operacional entre Semáforo e Reboques;
+12. ausência de remoção automática de legado sem auditoria de consumidores;
+13. ausência de criação silenciosa de novo `eventoId` durante reconciliação de retificação;
+14. ausência de duplicação silenciosa de card;
+15. ausência de perda silenciosa de ocorrência;
+16. preservação do histórico durante retificação e reversão;
+17. separação entre decisão operacional pontual e alteração das regras determinísticas;
+18. falha segura diante de situação não compreendida.
+
+Para a entrega do Guardião destinada à expansão operacional do NIT, aplica-se adicionalmente o seguinte critério:
+
+> **A entrega não exige eliminar todos os erros possíveis. Exige impedir que erros não tratados provoquem silenciosamente dano estrutural, garantindo integridade, observabilidade, recuperabilidade, falha segura e operação intuitiva.**
+
+---
+
+# 16. Questões abertas
+
+Estas questões permanecem fora do conjunto de contratos até validação:
+
+```text
+VALIDAR:
+- Evento finalizado de Reboques deve ser removido ou arquivado?
+- Deve existir histórico permanente de Reboques?
+- Qual deve ser a persistência entre plantões de Reboques?
+- Existe/será necessário executor automático de rendições agendadas?
+- Qual infraestrutura deve executar cron_export.py?
+```
+
+A questão:
+
+```text
+NORMALIZADO pode voltar a PENDENTE?
+```
+
+não permanece aberta.
+
+A decisão consolidada é:
+
+```text
+SIM, por reconciliação explícita de retificação,
+com preservação de identidade e histórico,
+sem reabertura implícita por herança,
+sem reativação automática do estado operacional
+e com decisão humana quando a contradição exigir interpretação.
+```
+
+Uma IA ou desenvolvedor não deve responder as demais questões abertas por inferência a partir do comportamento atual.
+
+---
+
+# 17. Protocolo para nova regra
+
+Antes de acrescentar uma regra a este documento:
+
+```text
+1. localizar o domínio
+2. localizar o fluxo
+3. localizar o estado
+4. localizar a persistência
+5. localizar consumidores
+6. verificar histórico
+7. confrontar documentação
+8. classificar evidência
+9. se for decisão nova, registrar decisão/ADR
+10. somente então atualizar BUSINESS-RULES.md
+```
+
+A regra fundamental é:
+
+```text
+"O código atualmente faz X"
+            ≠
+"O sistema deve fazer X"
+```
+
+Casos encontrados em produção não alteram esse protocolo. Um novo incidente aumenta a evidência disponível; não altera automaticamente o contrato.
+
+---
+
+# 18. Documentos relacionados
+
+- `ARCHITECTURE.md` — arquitetura e responsabilidades.
+- `DATA-MODEL.md` — entidades, campos, IDs e relações.
+- `WORKFLOW.md` — fluxos operacionais ponta a ponta.
+- `CONTEXT.MD` — visão curta de entrada e estado geral.
+- `DECISIONS.md` / ADRs — decisões arquiteturais.
+- `AI-INSTRUCTIONS.md` — protocolo de atuação de agentes de IA.
+- `TODO.md` — questões abertas, investigações e próximas ações.
+- Contrato de Entrada CEMOB — tolerâncias, validações e casos adversos da entrada CEMOB.
+
+---
+
+**Status:** regras e contratos consolidados a partir da auditoria disponível e das decisões validadas para integridade/reconciliação do processamento CEMOB.
+
+**Próxima etapa da entrega:** refletir os contratos consolidados no `WORKFLOW.md` e, em seguida, transformá-los em casos de teste de aceitação antes da implementação.
+
+## BR-CON-019 — Fim corrigido pela fonte (13.2, autorizado 18/10/2026)
+
+Ocorrência já normalizada cuja linha (mesmo início) volta com **outro fim**: o card recebe o fim novo, guarda o anterior em `fimAnterior` e mostra "⟲ fim corrigido {antes} → {depois}". Fim **antes do início** não é aplicado: o card fica como está e o NIT-13 pergunta à fonte.
+
+**20/11/2026 (decisão do Cristiano):** fim antes do início no mesmo dia (ex.: início 10:02, fim 01:33 — o CTA quis dizer 13:33) é **erro de digitação da fonte**. O NIT **não corrige sozinho** (ler 01:33 como 13:33), porque isso alteraria o tempo de atendimento: mantém o que veio, e o NIT-13 pergunta. Quem corrige é o CTA, na planilha.
+
+## BR-CON-020 — Linha sem início não apaga início conhecido (13.2, autorizado 19/10/2026)
+
+Se o relatório traz o semáforo **só** com linha sem início e o card pendente já tem início, o card fica como está (critério C1: proteger o processado contra o bruto). O NIT-14 pergunta à fonte. Quando há linha com início e linha sem início, a correção de horário vem da linha **com** início.
+
+## BR-CON-021 — Identidade de linha sem início não colide (13.2, autorizado 19/10/2026)
+
+O id de linha sem início é `{código}_SI{data}`. Se esse id já pertence a outra ocorrência (card que nasceu sem início e depois ganhou início ou foi normalizado), a nova pendência recebe `{código}_SI{data}_{n}` (próximo livre). Sem isso a pendência nova se perdia em silêncio.
+
+## BR-DEC-001 — Decisões do operador (13.2)
+
+- NIT-10 MANTER vale enquanto o semáforo estiver fora do relatório; voltou e sumiu de novo → pergunta outra vez.
+- NIT-11 MANTER NORMALIZADO vale enquanto a fonte insistir na linha sem fim; a fonte devolveu o fim → a decisão é esquecida.
+- NIT-11 REABRIR não é oferecido se o semáforo já tem outra pendência (BR-CON-010).
+- TIRAR nunca apaga: grava `retirado` no card; DESFAZER limpa. Card retirado que a fonte volta a listar volta ao painel (mesmo card).
+
+## BR-DEC-002 — Normalização manual é provisória (13.2, 20/10/2026)
+
+- Normalizar à mão (✓ do card ou NORMALIZOU do NIT-10) grava `normManual {ts, por, fim}` no card: o painel mostra normalizado na hora, com a etiqueta ✋.
+- Enquanto a fonte ainda listar a linha aberta, o card NÃO volta a pendente e não gera NIT-11 ("voltou atrás"); aparece o NIT-17 azul (não conta). Normalizado à mão que some do relatório não gera NIT-10.
+- Quando a fonte manda a linha com fim, vale o horário da fonte (BR-CON-019 se for diferente: ⟲ fim corrigido) e `normManual` é apagado.
+- REABRIR no NIT-17 devolve o card a pendente e apaga `normManual`; DESFAZER restaura.
+- O relatório de saída usa o estado atual do painel (não marca nada).
+
+## BR-CON-022 — Hora com erro de digitação (13.2.1, autorizado 23/10/2026)
+
+- Em "Início:" e "Fim:", entre a hora e os minutos o NIT aceita de 1 a 3 sinais entre `. : ; , h` (com ou sem espaço): `06.:50`, `06.50`, `06;;50`, `06h50`, `6:50` → `06:50`. Vale só se a hora for 0–23 e os minutos 0–59.
+- A leitura não incomoda o operador; fica registrada no 📜 O QUE MUDOU ("Hora lida com correção").
+- Sem separador (`0650`), minuto incompleto (`06.:5`) ou hora impossível (`65:30`): não é adivinhado. O card fica sem início e o NIT-14 mostra o que veio.
+- Card já existente sem início (BR-CON-021) recebe a hora quando ela passa a ser lida: mesmo card, sem duplicar.
+- Origem: relatório real de 23/10/2026, semáforo 446 "Início: 23/10/2026 06.:50".
+
+## BR-DEC-003 — Card SEM início normalizado à mão continua sendo o card do semáforo (13.2.1, 23/10/2026)
+
+- Caso real (446 e 933, 23/10): card nascido sem início, normalizado à mão; quando a fonte mandou a linha com início e fim, o NIT criava outro card e o relatório de saída mostrava o semáforo 2 vezes.
+- Regra: enquanto for provisório (BR-DEC-002), o card sem início normalizado à mão:
+  1. continua recebendo a linha SEM início do mesmo semáforo (a fonte ainda diz pendente → aviso azul NIT-17, sem card novo);
+  2. recebe a primeira linha COM início anterior ou igual ao fim que o operador informou (mesma ocorrência): encerrada → vale início e fim da fonte (⟲ fim corrigido, deixa de ser provisório); aberta → recebe o início e segue provisório.
+- Linha que começa depois do fim informado é outra ocorrência (reincidência): não é absorvida.
+
+## BR-DEC-004 — Todo caminho de normalizar à mão segue a mesma regra (13.2.1, 23/10/2026)
+
+- Botão ✓, NORMALIZOU do "não veio", **Central (aba Normalizar)** e **arrastar para NORMALIZADOS** gravam: coluna NORMALIZADOS, status NORMALIZADO, data/hora do fim e a marca `normManual` (provisório, BR-DEC-002/003).
+- Arrastar para NORMALIZADOS normaliza na **hora atual**, sem janela (decisão do Cristiano, 23/10). Antes só trocava a coluna: o banco ficava PENDENTE sem fim, aparecia "VOLTOU ATRÁS" e, sem início, o card duplicava.
+- A Central antes não marcava `normManual`: aparecia "VOLTOU ATRÁS" e, sem início, o card duplicava.
+- **Arrastar para fora de NORMALIZADOS = reabrir:** status PENDENTE, sem fim, sem `normManual`; registrado no 📜. Se a fonte disser normalizado, o próximo relatório normaliza de novo. Antes o banco continuava NORMALIZADO com o card em outra coluna.
+
+## BR-DEC-005 — Um semáforo não vira dois cards por erro da fonte (13.2.1, pedido do Cristiano em 23/10/2026)
+
+"Tudo que afeta a contagem devemos corrigir." Achados forçando duplicação (`testes/bateria-duplicacao.js`, casos fixos em `testes/bateria-duplicacao-casos.js`):
+
+- **Código sem o zero:** os códigos da CEMOB têm 3 dígitos ou mais (017, 084, 1106; conferido nos 23 relatórios de 23/10). "17" é lido como **017**. No 📜: "ℹ Código lido com correção: "17" → 017".
+- **Linha sem início de semáforo já normalizado:** o relatório é cumulativo. Se a linha de um normalizado some e o semáforo aparece numa linha SEM início, é a linha dele que perdeu a hora. Ordem: o normalizado de mesmo fim; o pendente sem início; o normalizado sem início; o único normalizado que ficou sem linha. Linha aberta nesse caso segue a regra do normalizado que volta sem fim (pergunta, BR-NOR-007). Falha nova sem início, com a linha do normalizado presente, continua abrindo card novo.
+- **Linha encerrada sem início fechando pendente com início:** fecha o card e **mantém o início** que ele tinha (antes o início era apagado).
+- **Card sem início que nasceu normalizado pela fonte** também é provisório (como BR-DEC-003): recebe a linha com início quando ela chegar. Antes cada relatório abria outro (_SI, _SI_2, _SI_3…).
+- **A mesma linha repetida** no relatório (mesmo início, mesma seção, mesmo fim) é uma ocorrência só.
+- **Fonte corrige o início de ocorrência já normalizada:** a linha do card some e aparece uma só, encerrada, de mesmo fim ou sobreposta → mesmo card com o início corrigido (⟲ Início corrigido pela fonte). Voltar ao início anterior também é reconhecido. Reincidência real (linha do card presente + outra linha) continua virando dois cards.
+- **Normalizado volta ABERTO com outro início** que começa antes do fim dele: é a mesma ocorrência (um semáforo não tem duas falhas ao mesmo tempo). Normalizado pela fonte → pergunta "VOLTOU ATRÁS" (BR-NOR-007), sem card novo; normalizado à mão → recebe o início corrigido e segue provisório.
+- **Pendente com início cuja linha some e aparece uma linha ENCERRADA sem início** (com fim depois do início dele): é o fim desse pendente; mantém o início.
+
+## BR-ADM-001 — ADM limpa o painel, com cópia (13.2.2, pedido do supervisor; decisões do Cristiano em 24/10/2026)
+
+- Motivo: relatório errado entrou e o status não pode ser compartilhado. O operador avisa o ADM; o ADM decide.
+- Só quem tem `nit_admins/{chave}: true` (gravado pelo console) vê **🧹 LIMPAR PAINEL**. A segurança é a **regra do banco**, não o botão escondido.
+- Limpa **cards (`kanban`) + avisos (`meta/decisoes_ativas`)**. A LINHA DO TEMPO fica e registra "🧹 Painel limpo (N cards). Cópia guardada.".
+- Antes de apagar, guarda a cópia em `lixeira/c{ts}` (quem, quando, cards, avisos) — na MESMA gravação (tudo ou nada). Guarda só as **5 últimas**.
+- **Confirmação digitada (31/10, pedido do Cristiano: evitar limpar por acidente):** a pergunta traz um campo "Para confirmar, digite LIMPAR". O botão LIMPAR fica travado até a palavra estar certa (maiúsculas, minúsculas ou espaço não importam); clique ou Enter sem a palavra não fazem nada. O destaque continua em CANCELAR. Cancelar no meio não deixa a próxima pergunta travada.
+- **↩ RESTAURAR também pede palavra (31/10, decisão do Cristiano):** digitar RESTAURAR. Devolver por engano os cards de um relatório errado também prejudica o painel.
+- **↩ RESTAURAR** (só ADM) devolve o último painel limpo; cards que entraram depois continuam (não sobrescreve). Registra "↩ Painel restaurado (N cards).".
+
+
+## BR-PLA-001 — Relatório da planilha do CTA (14.0, homologado em 29/10/2026)
+
+- **Fonte:** a aba BancoFalhas da planilha do CTA (09_CTA_FalhasSemaforos_TempoReal2026), com acesso só de leitura cedido pelo Jordan (CTA) em 28/10/2026. O relatório do WhatsApp é uma cópia dela.
+- **Regra do dia D (conferida com os 23 relatórios reais de 23/10):** entra toda linha com início até o fim do dia D e fim no dia D ou sem fim. Sem fim = pendente.
+- **Montagem:** um script no ESPELHO CTA (conta cristianovlivre) monta, a cada minuto, o **mesmo texto do relatório CEMOB**. Ele grava em `fonte_planilha/conteudo` só quando o texto muda, e o sinal de vida vai a cada minuto em `fonte_planilha/verificadoEm`. Não usa chave do banco: o acesso é o da conta Google dona dos projetos.
+- **Motor:** o NIT processa esse texto **pelo mesmo caminho de colar o relatório**. Nenhuma regra de classificação muda, e a contagem bate porque a fonte é a mesma.
+- **Uma janela só:** cada versão (assinatura) é processada por uma janela, a que grava primeiro em `meta/planilha_processada`. Se ela travar, outra assume depois de 2 minutos, uma vez por versão.
+- **Não processa sozinho, espera o operador:**
+  - relatório com data diferente de hoje;
+  - código de 1 dígito;
+  - pergunta aberta na tela;
+  - texto colado no campo.
+- **Fim da planilha (14.4.2):** é a última linha com código (SCN) na coluna A. Valor solto em outra coluna é ignorado. Linha solta com código longe do fim (30+ linhas vazias antes dela na coluna A) ou trecho lido sem nenhuma ocorrência válida → `fonte_planilha/erro` com o motivo (faixa no NIT; cola-se o WhatsApp), nunca relatório vazio.
+- **Código com 1 ou 2 dígitos na planilha** ("04"): toda comparação planilha × card (novidades, aviso de mudança, BR-PLA-002) usa o código com 3 dígitos ("004"), a mesma regra do card (23/10). Sem isso a linha de estado ficava em "⏳ ATUALIZANDO…" para sempre (20/11/2026).
+- **Linha com fim ilegível** (ex.: fim digitado na coluna da data) fica fora do relatório e vai para `conferir`.
+- **Automação parada:** depois de 3 minutos sem sinal de vida (ou do intervalo avisado em `fonte_planilha/intervaloMin` + 2 min, quando maior — 14.4.1; hoje o script roda sempre a 1 min), ou com o cabeçalho da planilha diferente do esperado (`fonte_planilha/erro`):
+  - aparece a faixa vermelha "⚠ PLANILHA PAROU ÀS hh:mm · COLE O RELATÓRIO DO WHATSAPP" (ou "MUDOU DE FORMATO");
+  - o título da aba vira "⚠ PAROU";
+  - sai uma notificação do sistema;
+  - a LINHA DO TEMPO registra a parada e a volta.
+  Colar o relatório funciona sempre (plano B).
+- **Toda mudança avisa**, porque pede atualização imediata no grupo:
+  - na tela: aviso passageiro piscando (canto inferior direito) e a borda do card pisca 8 vezes e apaga, sem contorno fixo (decisão de 30/10/2026);
+  - fora da tela: número no título, título e ícone da aba piscando em vermelho, e notificação do sistema (uma por versão, fica até o clique), que abre a SAÍDA.
+- **Sem o nó `fonte_planilha`**, nada aparece e o NIT funciona como antes.
+
+## BR-SB-001 — Barra lateral de Semáforos (14.1, especificação de 22/10/2026; homologado em 30/10/2026)
+
+- **Sempre aberta.** O botão de recolher e o atalho `[` saem, e a preferência antiga do navegador é ignorada.
+- **No lugar do título "SAÍDA" entra uma linha de estado**, que diz de quando e de onde são os totais (ver MENSAGENS 4h).
+  - A hora vem do último processamento de qualquer operador (`meta/ultimo_processamento`), ou da planilha (`meta/planilha_processada`) enquanto não houver processamento novo.
+  - Clicar na linha processa a planilha.
+- **Ordem da SAÍDA:**
+  1. linha de estado;
+  2. totais (Ocorrências · Pendentes · Normalizados);
+  3. Ver Relatório e Incluir normalizados;
+  4. CAUSAS DO DIA;
+  5. ATENDIDOS.
+- **A caixa de pré-visualização sai da tela.** O texto do relatório de saída não muda.
+- **CAUSAS DO DIA:**
+  - mostra todas as causas dos cards que entram em Ocorrências, da maior para a menor, só as que ocorreram; a soma é igual a Ocorrências;
+  - quando não cabe, as mesmas causas viram etiquetas lado a lado, e nenhuma é escondida.
+- **ATENDIDOS: escondido na 14.2 (decisão de 31/10).** Volta na 14.3 com a regra nova: conta a equipe que **chegou** ao local (chegada por equipe, hora digitada); ao arrastar, conta como "a caminho" e sai da conta se o card sair da coluna ou normalizar sem chegada; "Cancelar" na Central. A regra abaixo, de 30/10, foi substituída:
+- **ATENDIDOS (decisão de 30/10, "por enquanto"):**
+  - cada equipe que atuou no semáforo conta 1, uma vez por semáforo;
+  - contam despacho, apoio e rendição, pela trajetória `colunaN`; ação conjunta conta para as duas;
+  - continua contando depois de normalizado.
+  - Arraste por engano também conta (melhoria futura, ver HANDOFF de 30/10).
+- **Topo:** só o estado do sistema (Firebase e ✓ SALVO). Nada quebra linha; em tela estreita, a busca encolhe e o nome do operador some abaixo de 1400 px.
+
+## BR-PLA-002 — Encerrado depois da meia-noite com hora de ontem (14.2, pedido do Cristiano em 31/10/2026)
+
+- **Caso:** um pendente atravessa a meia-noite e vira herança do dia novo (BR-CON-005). Depois, o CTA preenche o fim com hora do dia anterior (ex.: 23:59). Pela regra do CTA, a ocorrência é do dia anterior e sai do relatório de hoje.
+- **Antes:** o NIT alertava "SAIU DO RELATÓRIO". Normalizado à mão, o card continuava no dia de hoje, contava nos totais (que ficavam diferentes dos do CTA) e ficava "aguardando a fonte" para sempre.
+- **Com a planilha:** o script manda também a lista `ontem`, o que normalizou no dia anterior. Quando código, início e fim antes de hoje batem com um card do painel que não está no relatório de hoje, o NIT:
+  - normaliza o card com o fim da planilha;
+  - volta a `dataReferencia` para o dia do fim;
+  - limpa "à mão" e o alerta NIT-10;
+  - não pergunta nada;
+  - registra na LINHA DO TEMPO: "✓ 183 normalizou ontem (30/10) às 23:59: atualizado na planilha depois da meia-noite. Não conta hoje."
+- **Não bateu exatamente** (código, início ou data): alerta como antes. Nada é decidido no escuro (BR-CON-009).
+- **Normalizar à mão com data de um dia anterior:** a ocorrência passa a ser daquele dia (`dataReferencia` = data do fim) e sai dos totais, das CAUSAS e dos ATENDIDOS de hoje. Vale também para o relatório colado.
+- **A mesma ação repetida na LINHA DO TEMPO em menos de 1 minuto** (clique duplo) entra uma vez só.
+- **Sem conexão com o banco não é "planilha parou":** com `.info/connected` falso (internet caída, aba congelada pelo navegador), a faixa diz "📵 SEM INTERNET". "Planilha parou" fica só para quando a conexão existe e o script não dá sinal. O clique na linha de estado registra a origem como PLANILHA.
+- **Sem pisca-pisca (31/10):** ao abrir, ao voltar à aba ou ao reconectar, o NIT espera 45 s pelos dados novos antes de julgar; "parou" e "sem internet" só valem se durarem 30 s. "Voltou" só é registrado se "parou" tiver sido registrado. "Mudou de formato" continua imediato.
+
+## BR-MOV-001 — NIT Móvel, fase 1: só visualização, só ADM (decisões do Cristiano em 31/10/2026)
+
+- **Quem:** só ADM (`nit_admins/{chave}: true`). Operador comum continua no NIT de sempre, também no celular.
+- **Como chega (01/11, pedido do Cristiano: "o link é esse …/nit-homologacao/"):** no celular (toque, até 900 px), o endereço normal do NIT abre o `movel.html` **antes do login**, porque o login do `index.html` não funciona no iPhone. Lá a pessoa entra; quem não é ADM volta para `index.html?versao=computador` já logado (mesma sessão do site). Antes de 01/11: ADM em tela de toque com até 900 px de largura vai para `movel.html`. No computador nada muda. "Abrir versão computador" leva a `index.html?versao=computador`, que não desvia.
+- **No `movel.html`:** confere `usuarios_autorizados` e `nit_admins` de novo. Quem não é ADM volta para o NIT de computador; não autorizado é desconectado.
+- **O que mostra:** os cards do dia (`dataReferencia` = hoje, sem retirados), pela coluna, igual aos totais do computador.
+  - Aguardando: a mais antiga primeiro, com "há Xh". 2 h ou mais fica vermelho.
+  - Via Livre e AMC: equipe, viatura, apoio e "desp. há X".
+  - Normalizados: o mais recente primeiro, "às HH:MM".
+  - Busca por código, cruzamento, causa e equipe; filtros com contagem; cabeçalho do grupo preso no topo.
+  - "novo": card que entrou ou mudou de coluna desde a última visita naquele aparelho. Na primeira visita, nada é novo.
+  - Linha de estado: hora do último processamento e origem; "SEM INTERNET" só se durar 5 s.
+- **Login (01/11/2026):** o mesmo login do Google do NIT, **só pela janela** (igual ao computador). Sem "ir e voltar" (redirect): no github.io o iPhone e o Chrome novo bloqueiam o armazenamento do `firebaseapp.com`, e o login voltava sem sessão (visto no navegador do WhatsApp, iPhone, 31/10 23:26).
+  - Falhou: a tela diz o motivo e o código (nenhum erro mudo) e mostra a saída: iPhone "⬆︎ → Abrir no Safari"; Android botão "Abrir no Chrome" (`intent://`); os dois com "Copiar link". Sem internet: só diz isso.
+  - Janela que não responde em 20 s: mostra a saída sem cancelar a tentativa.
+  - Orientação aos ADMs: abrir uma vez no Safari/Chrome e salvar na tela de início.
+  - **01/11: a janela também falhou no Safari do iPhone** (movelhomolog4, versão conferida no repositório). Adotado o "ir e voltar" pela própria página: o Google devolve o comprovante (`id_token`, fluxo implícito do OpenID Connect) ao próprio `movel.html`; o NIT confere `state` e `nonce` (validade 10 min), tira o comprovante do endereço e abre a sessão no Firebase com `signInWithCredential`. Mesmo login do Google, mesma lista, mesmas regras. Não passa pelo `firebaseapp.com`.
+  - Precisa de: "ID do cliente da Web" de cada projeto em `NIT_GOOGLE_CLIENT` (movel.html) e, no Google Cloud, a origem `https://crisstiano07.github.io` e o endereço de volta do `movel.html` autorizados. Vazio = janela do Google (como antes).
+  - Rastro do login na tela de entrar (versão + último passo, guardado no aparelho) para diagnóstico por print.
+- **Telas (01/11, "UX mobile first", pedido do Cristiano):** abas fixas embaixo, ao alcance do polegar: **Ocorrências · Resumo · ADM**.
+  - **Ocorrências:** uma lista por situação (Aguardando, Via Livre, AMC, Sem nec., Normalizados, Todos), **lado a lado**. Arrastar o dedo para o lado troca a lista, e o filtro de cima acompanha; tocar no filtro leva à lista. Cada lista rola para baixo sozinha. A aba mostra o número de aguardando.
+  - **Resumo:** totais do dia, quantos em cada situação e CAUSAS DO DIA (mesmo critério da barra lateral do computador).
+  - **ADM:** 🧹 Limpar painel, ↩ Restaurar painel (só quando há cópia não restaurada), Abrir versão computador, Sair e a versão. As ações perigosas ficam longe da lista, para ninguém tocar sem querer ao rolar.
+  - **Confirmação por baixo da tela (acima do teclado):** é preciso digitar LIMPAR ou RESTAURAR. O destaque fica em Cancelar; sem a palavra, nem o botão nem o Enter fazem nada.
+- **Texto inteiro e copiar (01/11, pedido do Cristiano antes da produção):** o cruzamento aparece inteiro, quebrando linha (nada cortado com "…"). Rolagem lateral por linha foi descartada porque brigaria com o arrastar para o lado que troca de lista.
+  - **Tocar na linha:** abre os detalhes por baixo (situação, problema, causa, início, equipe, apoio, tempo, fim) e o botão **📋 Copiar para compartilhar**.
+  - **Normalizado (01/11, pedido do Cristiano):** os detalhes mostram só **Início, Fim, Tempo aberto** (duração) e **Atuou** (VIA LIVRE/AMC pela trajetória do card + equipe e viatura, com apoio). Sem problema e causa. Pendentes continuam com todos os campos.
+  - **Segurar e soltar:** copia direto e mostra "📋 389 copiado". O iPhone só deixa copiar no soltar; se o aparelho recusar, abre os detalhes.
+  - **Rolar com o dedo não copia nem abre nada.**
+  - **Formato (M1, decisão do Cristiano em 01/11):** o mesmo do botão "Copiar Localização" do card no computador: `*389 ENDEREÇO - PROBLEMA*`, com os asteriscos (negrito no WhatsApp) e sem "Desde". Testado contra o botão do card do NIT de verdade (`bateria-movel-paridade.js` PA4; sem os asteriscos, o teste falha).
+- **Limpar/Restaurar pelo celular (01/11):** mesmo efeito do computador (BR-ADM-001): cards e avisos, cópia na lixeira (as 5 últimas), "🧹 Painel limpo (N cards). Cópia guardada." na LINHA DO TEMPO, os computadores abertos esvaziam na hora. No celular, a LINHA DO TEMPO entra na mesma gravação (tudo ou nada). Paridade testada contra o NIT de computador (`testes/bateria-movel-paridade.js`). Falha: "Nada foi apagado", com o código.
+- **Grava no banco só o LIMPAR e o RESTAURAR do ADM.** Fora isso, lê só `kanban` do dia (consulta por `dataReferencia`, poupa dados móveis), `meta/ultimo_processamento` e `.info/connected`.
+- **Banco:** o endereço decide. `/nit-homologacao/` usa o banco de teste e mostra a marca HOMOLOG.
+- **Fica para depois:** copiar status para o grupo (restrito); despacho de equipe pelo supervisor (fase 2); perfil por usuário.
+
