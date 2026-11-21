@@ -1026,11 +1026,15 @@
             document.body.classList.add('nit-planilha-parada');
         },
         // o que a planilha diz e o painel ainda não mostra
+        // 20/11: a planilha manda o código como veio ("04"); o card usa o código da CEMOB com 3 dígitos ("004",
+        // regra de 23/10). Toda comparação planilha × card passa por aqui — sem isso "04" nunca batia com o card
+        // e a linha de estado ficava em "ATUALIZANDO…" para sempre.
+        _cod(c) { const s = String(c == null ? '' : c).trim(); return /^\d{1,2}$/.test(s) ? s.padStart(3, '0') : s; },
         novidades() {
             const it = (this._c && this._c.itens) || [];
             const cards = [...document.querySelectorAll('#tab-semaforo .kanban-card')];
             return it.filter(x => {
-                const c = cards.find(el => el.dataset.codigo === x.c && (el.dataset.inicio || '').trim() === x.i);
+                const c = cards.find(el => el.dataset.codigo === this._cod(x.c) && (el.dataset.inicio || '').trim() === x.i);
                 if (!c) return true;
                 return !!x.f !== !!c.closest('#coluna-normalizados');
             }).length;
@@ -1094,13 +1098,13 @@
         },
         // ── avisos de mudança: na tela (aviso passageiro + brilho no card), fora da tela (título + notificação)
         _diff(ant, novo) {
-            const A = (ant && ant.itens) || [], N = (novo && novo.itens) || [], k = x => `${x.c}|${x.i}`;
+            const A = (ant && ant.itens) || [], N = (novo && novo.itens) || [], k = x => `${this._cod(x.c)}|${x.i}`;
             const mA = new Map(A.map(x => [k(x), x])), mN = new Map(N.map(x => [k(x), x]));
             const out = [], cods = new Set(), usados = new Set();
             for (const x of N) {
                 const a = mA.get(k(x));
                 if (!a) {
-                    const velho = A.find(y => y.c === x.c && !mN.has(k(y)) && !usados.has(k(y)));
+                    const velho = A.find(y => this._cod(y.c) === this._cod(x.c) && !mN.has(k(y)) && !usados.has(k(y)));
                     if (velho) { usados.add(k(velho)); out.push(`início corrigido ${x.c}`); } else out.push(`${x.f ? 'entrou normalizado' : 'entrou'} ${x.c}`);
                     cods.add(x.c);
                 } else if (!a.f && x.f) { out.push(`normalizou ${x.c}`); cods.add(x.c); }
@@ -1108,7 +1112,7 @@
                 else if (a.f !== x.f) { out.push(`fim corrigido ${x.c}`); cods.add(x.c); }
             }
             for (const a of A) if (!mN.has(k(a)) && !usados.has(k(a))) { out.push(`saiu ${a.c}`); cods.add(a.c); }
-            return { textos: out, cods: [...cods] };
+            return { textos: out, cods: [...cods].map(c => this._cod(c)) };
         },
         _avisarMudanca(ant, novo) {
             if (!ant || !novo || !novo.assinatura || ant.assinatura === novo.assinatura) return;   // 1ª leitura não avisa
@@ -1179,12 +1183,12 @@
         _fecharOntem(c) {
             const lista = (c && c.ontem) || []; if (!lista.length) return;
             const hoje = NitData.hoje(), chave = d => { const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}${m[2]}${m[1]}` : ''; };
-            const deHoje = new Set((c.itens || []).map(x => `${x.c}|${x.i}`));
+            const deHoje = new Set((c.itens || []).map(x => `${this._cod(x.c)}|${x.i}`));
             for (const x of lista) {
-                if (deHoje.has(`${x.c}|${x.i}`)) continue;
+                if (deHoje.has(`${this._cod(x.c)}|${x.i}`)) continue;
                 const [df, hf] = String(x.f).split(' ');
                 if (!df || !hf || !(chave(df) < chave(hoje))) continue;
-                const card = [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${x.c}"]`)]
+                const card = [...document.querySelectorAll(`#tab-semaforo .kanban-card[data-codigo="${this._cod(x.c)}"]`)]
                     .find(el => (el.dataset.inicio || '').trim() === x.i);
                 if (!card) continue;
                 const norm = !!card.closest('#coluna-normalizados');
@@ -1202,7 +1206,7 @@
                     pl: 'norm', datareferencia: df, normManual: '{}', decisoes: JSON.stringify(dec) });
                 document.querySelector('#coluna-normalizados .kanban-cards-container')?.prepend(card);
                 const b = card.querySelector('.card-body'); if (b) b.innerHTML = Semaforo._buildBodyHTML(card.dataset);
-                NitDiario.acao(`✓ ${x.c} normalizou ontem (${df.slice(0, 5)}) às ${hf}: atualizado na planilha depois da meia-noite. Não conta hoje.`);
+                NitDiario.acao(`✓ ${this._cod(x.c)} normalizou ontem (${df.slice(0, 5)}) às ${hf}: atualizado na planilha depois da meia-noite. Não conta hoje.`);
             }
             try { Semaforo.atualizarPainel(); } catch (e) {}
         },
