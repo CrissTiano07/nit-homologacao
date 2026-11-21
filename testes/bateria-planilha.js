@@ -149,6 +149,24 @@ const relogio = (ns, iso) => ns.forEach(n => n.relogio.definir(iso));
     ck(!aos6, `6 min sem sinal com intervalo 5: sem faixa (${aos6})`), ck(aos8, `8 min sem sinal: faixa (${aos8})`),
     ck(!!faixa(A), `intervalo 1 de novo: 4 min sem sinal já mostra a faixa (${!!faixa(A)})`),
   ]);
+  // 20/11: código de 2 dígitos ("04") — o card é "004" (regra de 23/10). Antes: "ATUALIZANDO…" para sempre.
+  { const T = new Date('2026-10-28T09:30:00').getTime();
+    const C1 = [lin('04', '28/10/2026 09:01'), lin('05', '28/10/2026 09:01'), lin('311', '28/10/2026 08:15', '28/10/2026 08:34')];
+    const ini2 = { fonte_planilha: fonte(C1, { em: T }) };
+    const C = await h.subirNIT({ estado: ini2, relogioIso: '2026-10-28T09:30:00' }); await h.dormir(2500); C.w.NitPlanilha._render();
+    const estado1 = btn(C).textContent, nov1 = C.w.NitPlanilha.novidades();
+    const C2 = C1.slice(); C2[0] = lin('04', '28/10/2026 09:01', '28/10/2026 11:02'); C2[1] = lin('05', '28/10/2026 09:01', '28/10/2026 11:02');
+    C.relogio.definir('2026-10-28T11:05:00');
+    await C.w.NitFirebase.db.ref('fonte_planilha').set(fonte(C2, { em: T + 95 * 60000 })); await h.dormir(2500); C.w.NitPlanilha._render(); await h.dormir(200);
+    const cods = [...doc(C).querySelectorAll('#tab-semaforo .kanban-card')].map(c => c.dataset.codigo + (c.closest('#coluna-normalizados') ? 'N' : 'P')).sort().join(' ');
+    const d = C.w.NitPlanilha._diff({ itens: fonte(C1).conteudo.itens }, { itens: fonte(C2).conteudo.itens });
+    reg('PA18', 'Código de 2 dígitos na planilha ("04"): bate com o card "004" e a linha de estado não trava em ATUALIZANDO', [
+      ck(nov1 === 0 && /^✓ ATUALIZADO/.test(estado1), `pendentes 04/05: novidades ${nov1}, linha "${estado1}"`),
+      ck(cods === '004N 005N 311N', `cards: ${cods}`),
+      ck(C.w.NitPlanilha.novidades() === 0 && /^✓ ATUALIZADO/.test(btn(C).textContent), `normalizaram: novidades ${C.w.NitPlanilha.novidades()}, linha "${btn(C).textContent}"`),
+      ck(d.cods.join(',') === '004,005', `aviso de mudança acende os cards ${d.cods.join(',')}`),
+    ]);
+    C.dom.window.close(); }
   const f = R.filter(x => x !== 'PASSOU').length;
   console.log('RESUMO planilha', f ? { FALHOU: f, PASSOU: R.length - f } : { PASSOU: R.length });
   process.exit(0);
